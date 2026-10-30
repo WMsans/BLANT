@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inside blant-clusters.sh</title>
+<meta name="description" content="An animated, line-by-line walkthrough of BLANT's community-finding script.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=JetBrains+Mono:wght@400;500;600&family=STIX+Two+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page:#e4e6e8; --panel:#f4f5f6; --ink:#121417; --sub:#5d646c; --rule:#c9cdd2;
+  --stage:#121417; --stage-ink:#f4f5f6; --stage-mute:#9aa1a9;
+  --hot:#ff4a1c; --cob:#1f45e0; --cob-l:#7d95ff; --amb:#ffc94a; --ok:#3ddc97;
+  --hl:#ffe9e0; --hl-in:#eceef0;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --page:#0b0c0e; --panel:#1a1d21; --ink:#e9ebee; --sub:#9aa1a9; --rule:#30353b; --hl:#3a1e16; --hl-in:#202328; --cob:#7d95ff; }
+}
+:root[data-theme="dark"]{ --page:#0b0c0e; --panel:#1a1d21; --ink:#e9ebee; --sub:#9aa1a9; --rule:#30353b; --hl:#3a1e16; --hl-in:#202328; --cob:#7d95ff; }
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{background:var(--page);color:var(--ink);font:15px/1.5 Archivo,sans-serif;display:grid;grid-template-columns:220px minmax(0,1fr) 360px;gap:14px;padding:14px;height:100vh;overflow:hidden}
+
+/* ---- spine ---- */
+.spine{display:flex;flex-direction:column;min-height:0;overflow:auto;padding-right:2px}
+.spine h1{font:800 23px/1.05 Archivo;font-stretch:72%;letter-spacing:-.01em;margin:4px 0 4px}
+.spine .by{font:12.5px/1.4 "JetBrains Mono",monospace;color:var(--sub);margin-bottom:16px}
+.spine .part{font:600 13px/1.3 Archivo;color:var(--sub);margin:14px 0 8px}
+.ch{position:relative;display:block;width:100%;text-align:left;background:var(--panel);border:2px solid var(--ink);border-radius:4px;padding:9px 12px 10px;cursor:pointer;color:var(--ink);font:inherit}
+.ch b{display:block;font:700 21px/1.05 Archivo;font-stretch:78%}
+.ch span{display:block;font:12.5px/1.35 "JetBrains Mono",monospace;color:var(--sub);margin-top:3px}
+.ch.on{background:var(--stage);border-color:var(--stage);color:var(--stage-ink)}
+.ch.on b{color:var(--hot)} .ch.on span{color:var(--stage-mute)}
+.ch:focus-visible{outline:3px solid var(--cob);outline-offset:2px}
+.ticks{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.ticks i{width:9px;height:9px;background:var(--rule);border-radius:1px;cursor:pointer}
+.ch.on .ticks i{background:#3a3f46}
+.ticks i.done{background:var(--sub)} .ch.on .ticks i.done{background:#6c737b}
+.ticks i.now{background:var(--hot)!important}
+.subs{display:none;margin-top:8px;font:12.5px/1.6 "JetBrains Mono",monospace;color:var(--stage-mute)}
+.ch.on .subs{display:block}
+.subs div.now{color:var(--stage-ink)} .subs div.now::before{content:"";display:inline-block;width:6px;height:6px;background:var(--hot);margin:0 7px 1px 0}
+.pipe{position:relative;width:14px;height:16px;margin:0 auto;background:var(--rule);overflow:hidden}
+.pipe::after{content:"";position:absolute;left:3px;width:8px;height:3px;background:var(--cob);top:-4px;opacity:0}
+.pipe.flow::after{opacity:1;animation:drop 1s linear infinite}
+.pipe.flow.hot::after{background:var(--hot)}
+@keyframes drop{to{top:18px}}
+
+/* ---- stage ---- */
+.stage{background:var(--stage);color:var(--stage-ink);border-radius:6px;display:flex;flex-direction:column;min-height:0;min-width:0;position:relative}
+.stage header{padding:22px 30px 0}
+.stage h2{font:700 40px/1.02 Archivo;font-stretch:74%;letter-spacing:-.005em;min-height:41px}
+.stage .narr{font:16px/1.55 Archivo;color:#c9ced4;max-width:62em;margin-top:10px;min-height:4.65em}
+.narr code{font:14px "JetBrains Mono",monospace;color:var(--stage-ink);background:#23272d;padding:1px 5px;border-radius:3px}
+.narr b{font-weight:600}
+.k-s{color:var(--stage-ink);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
+.k-u{color:var(--hot)} .k-n{color:var(--amb)} .k-p{color:var(--cob-l)} .k-ok{color:var(--ok)}
+svg#cv{flex:1;min-height:0;width:100%;display:block;cursor:pointer}
+.ctrl{display:flex;align-items:center;gap:10px;padding:10px 18px 14px;font:13px "JetBrains Mono",monospace;color:var(--stage-mute)}
+.ctrl button{background:#23272d;color:var(--stage-ink);border:0;border-radius:4px;height:34px;min-width:40px;padding:0 12px;font:600 14px "JetBrains Mono",monospace;cursor:pointer}
+.ctrl button:hover{background:#2e333a} .ctrl button:focus-visible{outline:2px solid var(--cob-l)}
+.ctrl button.play[aria-pressed="true"]{background:var(--hot);color:var(--ink)}
+.ctrl .n{min-width:70px;text-align:center;color:var(--stage-ink)}
+.ctrl .hint{margin-left:auto}
+.bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:#23272d;border-radius:0 0 6px 6px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--hot);transition:width .5s}
+
+/* ---- code: Catppuccin Mocha ---- */
+.code{--base:#1e1e2e;--mantle:#181825;--crust:#11111b;--surface0:#313244;--surface1:#45475a;--overlay0:#6c7086;--overlay2:#9399b2;--text:#cdd6f4;
+  background:var(--base);border:2px solid var(--crust);border-radius:4px;display:flex;flex-direction:column;min-height:0;color:var(--text)}
+.code .file{display:flex;justify-content:space-between;padding:10px 14px;background:var(--mantle);border-bottom:1px solid var(--crust);border-radius:2px 2px 0 0;font:600 13px "JetBrains Mono",monospace;color:var(--text)}
+.code .file span{color:var(--overlay2);font-weight:400}
+.src{flex:1;overflow:auto;font:12.5px/1.62 "JetBrains Mono",monospace;padding:8px 0 40vh;color:var(--text);scroll-behavior:smooth;scrollbar-color:var(--surface1) var(--base)}
+.src div{white-space:pre;padding:0 12px 0 0;opacity:.45;transition:opacity .3s,background .3s}
+.src div i{font-style:normal;display:inline-block;width:42px;text-align:right;padding-right:12px;color:var(--overlay0)}
+.src div.in{opacity:1;background:var(--mantle)}
+.src div.on{opacity:1;background:var(--surface0);box-shadow:inset 4px 0 #fab387}
+.src div.on i{color:#fab387}
+.t-cm{color:#7f849c;font-style:italic} .t-str{color:#a6e3a1} .t-var{color:#eba0ac} .t-ivar{color:#f5c2e7}
+.t-kw{color:#cba6f7} .t-fn{color:#89b4fa} .t-num{color:#fab387} .t-op{color:#89dceb} .t-p{color:#9399b2}
+.t-q{color:#f2cdcd} .t-flag{color:#94e2d5} .t-const{color:#f9e2af} .t-arr{color:#b4befe} .t-id{color:#cdd6f4}
+
+@media (max-width:1100px){
+  body{display:block;height:auto;overflow:auto;padding:16px}
+  .spine{flex-direction:row;overflow-x:auto;gap:8px;align-items:stretch;margin-bottom:12px}
+  .spine h1,.spine .by,.spine .part,.pipe{display:none}
+  .ch{min-width:150px;flex:0 0 auto}
+  .ticks,.subs{display:none!important}
+  .stage{height:auto}
+  .stage header{padding:18px 16px 0}
+  .stage h2{font-size:30px}
+  svg#cv{aspect-ratio:1000/720;flex:none}
+  .ctrl .hint{display:none}
+  .code{margin-top:12px;height:360px}
+}
+</style>
+</head>
+<body>
+<nav class="spine" id="spine" aria-label="Pipeline stages">
+  <h1>Inside blant-clusters.sh</h1>
+  <div class="by">BLANT · scripts/blant-clusters.sh</div>
+</nav>
+<main class="stage" aria-live="polite">
+  <header><h2 id="title"></h2><p class="narr" id="narr"></p></header>
+  <svg id="cv" viewBox="0 0 1000 720" preserveAspectRatio="xMidYMin meet" role="img" aria-label="Animated diagram"></svg>
+  <div class="ctrl">
+    <button id="prev" aria-label="Previous step">‹</button>
+    <button id="play" class="play" aria-pressed="false" aria-label="Play">▶</button>
+    <button id="next" aria-label="Next step">›</button>
+    <span class="n" id="count"></span>
+    <button id="again" aria-label="Replay this step">↻</button>
+    <span class="hint">← → step · space play · click the picture to advance</span>
+  </div>
+  <div class="bar"><i id="bar"></i></div>
+</main>
+<aside class="code" aria-label="Source code">
+  <div class="file">scripts/blant-clusters.sh <span id="range"></span></div>
+  <div class="src" id="src"></div>
+</aside>
+<script src="js/source.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/kit.js"></script>
+<script src="js/steps-a.js"></script>
+<script src="js/steps-b.js"></script>
+<script src="js/steps-c.js"></script>
+<script src="js/highlight.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

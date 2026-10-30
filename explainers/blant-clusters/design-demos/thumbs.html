@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Six Candidates</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Archivo:wdth,wght@75..125,400..800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;box-sizing:border-box}
+body{background:#ececea;font:14px/1.45 "IBM Plex Mono",monospace;color:#222;padding:28px;width:1520px}
+.grid{display:grid;grid-template-columns:repeat(3,480px);gap:24px}
+.c{background:#fff;border:1px solid #ccc}
+.c .v{width:480px;height:300px;overflow:hidden;position:relative}
+.c img{width:480px;display:block}
+.c p{padding:10px 12px;border-top:1px solid #ddd}
+.c p b{display:block}
+.alt{outline:2px dashed #aaa;outline-offset:-2px}
+</style></head><body>
+<div class="grid">
+  <div class="c"><div class="v"><img src="dir-1.png"></div><p><b>1 · Manim Canvas (built)</b>Best designer: Grant Sanderson, 3Blue1Brown</p></div>
+  <div class="c"><div class="v"><img src="dir-2.png"></div><p><b>2 · Explorable Essay (built)</b>Real refs: Distill GNN intro + ciechanow.ski</p></div>
+  <div class="c"><div class="v"><img src="dir-3.png"></div><p><b>3 · Pipeline Cutaway (built)</b>Roulette: Arranz cross-section + Sato Kashiwa</p></div>
+  <div class="c alt"><div class="v" style="background:#fbfaf6"><svg width="480" height="300" id="bv"></svg></div><p><b>4 · Ladder of Abstraction (alternate)</b>Best designer: Bret Victor. One run per ED value, laid out as a strip</p></div>
+  <div class="c alt"><div class="v" style="background:#fff"><svg width="480" height="300" id="sm"></svg></div><p><b>5 · Every Step at Once (alternate)</b>Small multiples (Tufte): the whole BFS run in one grid</p></div>
+  <div class="c alt"><div class="v" style="background:#ffd400"><svg width="480" height="300" id="sa"></svg></div><p><b>6 · One Symbol per Stage (alternate)</b>Sato Kashiwa minimal symbols, one flat shape per stage</p></div>
+</div>
+<script src="toy.js"></script>
+<script>
+const g=(o)=>TOY.svg(o);
+// 4: ladder, the same graph at ED 0.6 / 0.8 / 0.95
+let h='';[0.6,0.8,0.95].forEach((ed,i)=>{h+=`<g>${g({edge:'#ccc',edgeS:'#222',edgeNew:ed>0.84?'#c33':'#1a7f5a',node:'#fff',nodeS:'#222',nodeC:ed>0.84?'#c33':'#1a7f5a',stroke:'#222',sw:1,r:5,scale:.19,dx:14+i*156,dy:70})}</g><text x="${30+i*156}" y="58" font-family="IBM Plex Mono" font-size="13">ED = ${ed}</text><text x="${30+i*156}" y="190" font-family="IBM Plex Mono" font-size="12" fill="${ed>0.84?'#c33':'#1a7f5a'}">u=5 ${ed>0.84?'evicted':'kept'}</text>`});
+h+=`<text x="30" y="250" font-family="IBM Plex Mono" font-size="14">drag ED ━━━━━━●━━━  every panel updates</text>`;
+bv.innerHTML=h;
+// 5: small multiples, 12 steps
+h='';for(let i=0;i<12;i++){const x=10+(i%6)*78,y=20+Math.floor(i/6)*130;
+ TOY.S=[0,1,2,3,4,5,6].slice(0,Math.min(i+1,6));TOY.cand=i<6?i+1:-1;
+ h+=`<g>${g({edge:'#e3e3e3',edgeS:'#111',edgeNew:'#e05a00',node:'#eee',nodeS:'#111',nodeC:'#e05a00',r:3,w:.6,wS:1,wNew:1.2,scale:.095,dx:x,dy:y+10})}</g><text x="${x}" y="${y+60+50}" font-family="IBM Plex Mono" font-size="11" fill="#666">step ${i+1}</text>`;}
+TOY.S=[0,1,2,3,4];TOY.cand=5;sm.innerHTML=h;
+// 6: Sato symbols
+const sy=[['●','sample'],['▲','filter'],['≡','sort'],['◎','grow'],['✕','dedupe'],['◇','merge']];
+h='';sy.forEach(([s,l],i)=>{const x=40+(i%3)*150,y=40+Math.floor(i/3)*130;h+=`<rect x="${x}" y="${y}" width="120" height="100" fill="${i===3?'#111':'#fff'}"/><text x="${x+60}" y="${y+66}" text-anchor="middle" font-size="54" fill="${i===3?'#ffd400':'#111'}">${s}</text><text x="${x+60}" y="${y+93}" text-anchor="middle" font-family="Archivo" font-size="12" font-weight="700" fill="${i===3?'#fff':'#111'}">${l}</text>`});
+sa.innerHTML=h;
+</script>
+</body></html>

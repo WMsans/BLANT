@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Direction 3 · Pipeline Cutaway</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e4e6e8;--ink:#121417;--steel:#9aa1a9;--hot:#ff4a1c;--cob:#1f45e0;--pale:#f4f5f6}
+*{margin:0;box-sizing:border-box}
+body{background:var(--ink);font-family:Archivo,sans-serif;width:1440px}
+.frame{position:relative;width:1440px;height:810px;background:var(--bg);overflow:hidden}
+svg{position:absolute;inset:0}
+.t{font-family:Archivo;font-stretch:80%;font-weight:700}
+.m{font-family:"DM Mono",monospace}
+.strip{display:flex;gap:40px;align-items:center;padding:26px 48px;background:#111;color:#ccc;font:15px/1.5 "DM Mono",monospace;height:90px}
+.sw{display:flex;gap:6px}.sw b{width:34px;height:34px;border-radius:50%;display:block}
+</style></head><body>
+<div class="frame"><svg width="1440" height="810" id="s"></svg></div>
+<div class="strip">
+  <div class="sw"><b style="background:#e4e6e8"></b><b style="background:#121417"></b><b style="background:#ff4a1c"></b><b style="background:#1f45e0"></b><b style="background:#9aa1a9"></b></div>
+  <p><b style="color:#fff">Pipeline Cutaway.</b> The whole script is one tall machine drawn in section. Data rows drop through the pipes from chamber to chamber, and the camera dives into whichever chamber the current line belongs to. Ref: Adolfo Arranz cross-sections (SCMP), with Sato Kashiwa's flat-color economy.</p>
+</div>
+<script src="toy.js"></script>
+<script>
+const stages=[['blant -k8 -mcg','sample graphlets','×k parallel'],['awk #1','keep dense, tally per node',''],['sort -gr','rank by count',''],
+ ['awk #2','grow communities',''],['sort -nr','',''],['awk #3','drop exact dupes',''],['merge','overlap filter, report','']];
+let h='';const X=70,W=250,T0=40,ch=96,gap=12;
+// pipe spine
+h+=`<rect x="${X+W/2-9}" y="${T0}" width="18" height="${stages.length*(ch+gap)}" fill="#c9cdd2"/>`;
+stages.forEach(([a,b,c],i)=>{const y=T0+i*(ch+gap),on=i===3;
+  h+=`<rect x="${X}" y="${y}" width="${W}" height="${ch}" rx="4" fill="${on?'#121417':'#f4f5f6'}" stroke="#121417" stroke-width="2.5"/>`;
+  h+=`<text x="${X+18}" y="${y+40}" class="t" font-size="30" fill="${on?'#ff4a1c':'#121417'}">${a}</text>`;
+  h+=`<text x="${X+18}" y="${y+70}" class="m" font-size="15" fill="${on?'#c9cdd2':'#5d646c'}">${b}</text>`;
+  if(c)h+=`<text x="${X+W-14}" y="${y+86}" text-anchor="end" class="m" font-size="13" fill="#1f45e0">${c}</text>`;
+  // falling row tokens
+  if(i<6) for(let k=0;k<3;k++) h+=`<rect x="${X+W/2-6}" y="${y+ch+1+k*4}" width="12" height="2.5" fill="${i<3?'#1f45e0':'#ff4a1c'}"/>`;
+});
+// zoom wedge from chamber 4
+const cy=T0+3*(ch+gap);
+h+=`<polygon points="${X+W},${cy} ${X+W},${cy+ch} 400,770 400,40" fill="#121417" opacity=".09"/>`;
+h+=`<rect x="400" y="40" width="990" height="730" rx="6" fill="#121417"/>`;
+h+=`<text x="440" y="100" class="t" font-size="54" fill="#f4f5f6">Grow S from the top seed</text>`;
+h+=`<text x="440" y="136" class="m" font-size="17" fill="#9aa1a9">331  if(edgeCount/maxEdges &lt; ED * density_leeway) { delete S[u] …</text>`;
+h+=`<g>${TOY.svg({edge:'#3a3f46',edgeS:'#f4f5f6',edgeNew:'#ff4a1c',w:2,wS:4,wNew:6,node:'#2a2e34',nodeS:'#f4f5f6',nodeC:'#ff4a1c',stroke:'#121417',sw:3,r:16,scale:.9,dx:430,dy:200,label:i=>[0,1,2,3,4,5].includes(i)?"#121417":"#9aa1a9",ff:'DM Mono',fs:13})}</g>`;
+// density gauge
+h+=`<text x="1110" y="560" class="t" font-size="120" fill="#ff4a1c">0.80</text>`;
+h+=`<rect x="1110" y="590" width="240" height="14" fill="#2a2e34"/><rect x="1110" y="590" width="192" height="14" fill="#ff4a1c"/><rect x="1292" y="580" width="3" height="34" fill="#f4f5f6"/>`;
+h+=`<text x="1110" y="640" class="m" font-size="16" fill="#9aa1a9">12 / 15 ≥ 0.76  keep u</text>`;
+document.getElementById('s').innerHTML=h;
+</script>
+</body></html>

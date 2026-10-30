@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Direction 2 · Explorable Essay</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f7f7f5;--ink:#2b2b2b;--mute:#8a8a86;--s:#e0a526;--new:#2f7fd8;--no:#d9534f;--line:#d8d8d2;--codebg:#efefeb}
+*{margin:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:400 19px/1.62 "IBM Plex Sans",sans-serif;width:1440px}
+.col{width:700px;margin:0 auto;padding-top:56px}
+h2{font-size:34px;font-weight:600;letter-spacing:-.01em;margin-bottom:18px;color:#3a3a3a}
+p{margin-bottom:18px}
+.hs{color:var(--s);font-weight:600}.hn{color:var(--new);font-weight:600}
+code{font:500 16px "IBM Plex Mono",monospace;background:var(--codebg);padding:1px 5px;border-radius:3px}
+.fig{width:1120px;margin:26px auto 10px;display:grid;grid-template-columns:480px 1fr;gap:28px;align-items:center}
+pre{font:400 14.5px/1.75 "IBM Plex Mono",monospace;background:#fff;border:1px solid var(--line);border-radius:6px;padding:14px 0;color:#666}
+pre div{padding:0 16px}pre .n{color:#bbb;display:inline-block;width:34px}
+pre .on{background:#fdf3dc;color:#222;box-shadow:inset 3px 0 var(--s)}
+.panel{background:#fff;border:1px solid var(--line);border-radius:6px;position:relative;height:420px}
+.meter{position:absolute;right:20px;top:16px;font:500 15px "IBM Plex Mono",monospace;text-align:right;color:var(--mute)}
+.bar{width:220px;height:10px;background:#eee;border-radius:5px;margin-top:6px;position:relative}
+.bar i{position:absolute;left:0;top:0;bottom:0;width:80%;background:var(--new);border-radius:5px}
+.bar u{position:absolute;left:76%;top:-5px;bottom:-5px;border-left:2px solid var(--ink)}
+.ctrl{width:1120px;margin:0 auto;display:flex;gap:16px;align-items:center;font:14px "IBM Plex Mono",monospace;color:var(--mute);padding-left:508px}
+input[type=range]{width:420px;accent-color:var(--s)}
+.cap{width:700px;margin:6px auto 0;font-size:15px;color:var(--mute)}
+.strip{position:fixed;bottom:0;left:0;right:0;display:flex;gap:40px;align-items:center;padding:20px 48px;background:#1c1c1c;color:#ccc;font:15px/1.5 "IBM Plex Mono",monospace}
+.sw{display:flex;gap:6px}.sw b{width:34px;height:34px;border-radius:50%;display:block}
+</style></head><body>
+<div class="col">
+  <h2>Growing a community, one neighbor at a time</h2>
+  <p>We keep a set <span class="hs">S</span> and a queue of candidates. Each candidate <span class="hn">u</span> gets added for a moment, and the script asks one question: is <span class="hs">S</span> still dense enough? It doesn't count the edges again. It just adds the <span class="hn">edges u brings in</span>, kept in <code>newEdgeHits</code>.</p>
+</div>
+<div class="fig">
+<pre><div><span class="n">315</span>newEdgeHits = EdgesIntoS(u);</div><div><span class="n">317</span>edgeCount += newEdgeHits;</div><div><span class="n">319</span>S[u]=1;</div><div><span class="n">320</span>Slen = length(S);</div><div><span class="n">330</span>maxEdges = choose(Slen,2);</div><div class="on"><span class="n">331</span>if(edgeCount/maxEdges &lt; ED*leeway) {</div><div><span class="n">332</span>    delete S[u];</div><div><span class="n">342</span>    edgeCount -= newEdgeHits;</div><div><span class="n">344</span>    if(++misses &gt; MAX(Slen,n/100)) break;</div><div><span class="n">346</span>} else {</div><div><span class="n">347</span>    misses=0; AppendNeighbors(u, origin);</div><div><span class="n">349</span>}</div></pre>
+<div class="panel"><svg width="610" height="420" id="g"></svg>
+  <div class="meter">density 12 / 15 = 0.80<div class="bar"><i></i><u></u></div><div style="margin-top:6px">threshold 0.76</div></div></div>
+</div>
+<div class="ctrl">ED <input type="range" min="0.5" max="1" step="0.01" value="0.8"> 0.80</div>
+<p class="cap">Drag the edge-density threshold. Above about 0.84, node 5 no longer clears 0.95 × ED, so it's evicted and <code>misses</code> goes up by one.</p>
+<div class="strip">
+  <div class="sw"><b style="background:#f7f7f5;border:1px solid #555"></b><b style="background:#e0a526"></b><b style="background:#2f7fd8"></b><b style="background:#d9534f"></b><b style="background:#2b2b2b"></b></div>
+  <p><b style="color:#fff">Explorable Essay.</b> A long-form article where every figure pairs the real code (line numbers, the current line lit) with a live graph and a slider. Words in the text share colors with the figure. Animations play as you scroll into each figure. Ref: Distill “A Gentle Introduction to GNNs”, Bartosz Ciechanowski.</p>
+</div>
+<script src="toy.js"></script>
+<script>
+document.getElementById('g').innerHTML = TOY.svg({edge:'#d4d4ce',edgeS:'#e0a526',edgeNew:'#2f7fd8',w:1.5,wS:3,wNew:3.5,
+  node:'#fff',nodeS:'#e0a526',nodeC:'#2f7fd8',stroke:'#2b2b2b',sw:1.6,r:13,scale:.78,dx:16,dy:52,
+  label:i=>[0,1,2,3,4,5].includes(i)?'#fff':'#666',fs:12,ff:'IBM Plex Mono'});
+</script>
+</body></html>
