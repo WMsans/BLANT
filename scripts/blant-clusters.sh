@@ -236,6 +236,7 @@ for edgeDensity in "${EDs[@]}"; do
 	hawk ' # build the actual communities; may require huge amounts of RAM and CPU, eg 10GB and 12-24h for 9wiki-topcats
 	    BEGIN{if("'$RANDOM_SEED'") srand('$RANDOM_SEED');else Srand();OFS="\t"; ID=0; edgePredict='"$EDGE_PREDICT"';
 	ED='$edgeDensity'; maxClus='$maxClus'; coreIters='$CORE_ITERS'; coreStall='$CORE_STALL';
+	OVERLAP='$OVERLAP'; coreNoSkip=ENVIRON["BLANT_CLUSTERS_NOSKIP"]; # debugging: if set, refine even covered communities
 	coreCheck=ENVIRON["BLANT_CLUSTERS_CHECK"]; # debugging: if set, verify every refined community (slow)
 		M=1*'$minClusArg'; if(M>=1) minClus=M;
 		else {
@@ -366,13 +367,14 @@ for edgeDensity in "${EDs[@]}"; do
 		for(i=nLog;i>=1;i--) if(logT[i]>0) CoreDrop(logN[i]); else CoreAdd(logN[i]);
 		nLog=0;
 	    }
-	    # region start: a random boundary node. (CORE takes a random node from the whole graph, which on a large
+	    # region start: a random boundary node that leads somewhere. (CORE takes a random node from the whole graph, which on a large
 	    # sparse network almost never lands near S; choosing a random member and stepping out almost never finds the
 	    # few members that bridge to another dense group.)
 	    function CoreStart(    i,w) {
 		for(i=1; i<=10 && nBnd>0; i++) {
 		    w=bnd[1+int(rand()*nBnd)];
-		    if(!(w in S) && edgesIntoS[w]>0) return w;
+		    # it must have a neighbor outside S, or it has no region to bring and fill has already rejected it alone
+		    if(!(w in S) && edgesIntoS[w]>0 && length(edge[w])>edgesIntoS[w]) return w;
 		}
 		return "";
 	    }
@@ -414,6 +416,14 @@ for edgeDensity in "${EDs[@]}"; do
 		# region rounds are the expensive part; a community still too small to be reported after filling is not worth them
 		no=0; if(cN>=minClus) for(it=1; it<=coreIters && no<coreStall; it++) if(CoreRound()) no=0; else ++no;
 		PROCINFO["sorted_in"]=oldOrder;
+	    }
+	    # Is more than the OVERLAP fraction of S inside one community that was refined earlier? The final overlap
+	    # filter discards such a community anyway (the earlier one is at least as large), so refining it is wasted.
+	    function CoreCovered(    v,c,lim,cnt) {
+		if(coreNoSkip) return 0;
+		lim=length(S)*OVERLAP;
+		for(v in S) if(v in coreNodeClus) for(c in coreNodeClus[v]) if(++cnt[c] > lim) return 1;
+		return 0;
 	    }
 	    function CoreCheck(preN,preE,    u,v,w,e,n) { # debugging (BLANT_CLUSTERS_CHECK): the bookkeeping must match S
 		PROCINFO["sorted_in"]="";
@@ -547,11 +557,17 @@ for edgeDensity in "${EDs[@]}"; do
 			WARN(ed >= '$edgeDensity',"hmmm, ed is "ed);
 		    }
 		    if(coreIters>0 && length(S)>=2 && length(S)<maxClus && edgeCount/choose(length(S),2)>=ED) {
-			delete corePre; for(v in S) corePre[v]=1;
-			corePreN=length(S); corePreE=edgeCount;
-			CoreRefine();
-			if(coreCheck) { oldOrder=PROCINFO["sorted_in"]; CoreCheck(corePreN, corePreE); PROCINFO["sorted_in"]=oldOrder; }
-			for(v in S) if(!(v in corePre)) Sorder[++sorderN]=v;
+			oldOrder=PROCINFO["sorted_in"]; PROCINFO["sorted_in"]="";
+			if(CoreCovered()) ++coreSkipped;
+			else {
+			    delete corePre; for(v in S) corePre[v]=1;
+			    corePreN=length(S); corePreE=edgeCount;
+			    CoreRefine(); ++coreRefined;
+			    if(coreCheck) CoreCheck(corePreN, corePreE);
+			    for(v in S) if(!(v in corePre)) Sorder[++sorderN]=v;
+			    if(length(S)>=minClus) for(v in S) coreNodeClus[v][coreRefined]=1;
+			}
+			PROCINFO["sorted_in"]=oldOrder;
 		    }
 		    Slen=length(S);
 		    if(Slen>=minClus && wgtEdgeCount/edgeCount>='$minEdgeMean') {
@@ -573,6 +589,8 @@ for edgeDensity in "${EDs[@]}"; do
 			for(i=1;i<Slen*(1-'$OVERLAP');i++) started[Sorder[i]]=1;
 		    }
 		}
+		if('$VERBOSE' && coreIters>0)
+		    printf "CORE refinement: %d refined, %d skipped (already covered)\n", coreRefined, coreSkipped >"/dev/stderr"
 	    }' "$TMPDIR/net4awk.el$W" - | # dash is the output of the above pipe (sorted cluster counts)
 	sort -T $TMPDIR -nr |
 	hawk ' # remove duplicate clusters
