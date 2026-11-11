@@ -188,3 +188,11 @@ What differs from the design above, each decided from measurements during implem
 
 Reduced sampling (approach 3), reported only: `-n 1000000` cuts k=4 sampling 3x to 24x, and with `-X` the biggest
 cluster stayed at least the default-sampling baseline's in all 12 cells tried, with fewer clusters at ED <= 0.25.
+
+### Fill only vs region rounds (added after review)
+
+With region rounds switched off (`BLANT_CLUSTERS_NOROUNDS=1`), over the same 40 cells: biggest cluster larger than
+baseline in 34, equal in 4, smaller in 2; builder x1.28; end to end within +2% in 29 of 32 cells (worst +6.0%).
+Against that, full `-X 20` leaves the biggest cluster identical in 29 cells (larger in 4, smaller in 7), raises the
+median of the ten biggest in 19 cells and lowers it in 17, and costs another 25% of builder time. The fill step
+gives nearly all of the gain; whether region rounds stay on by default is Jeremy's decision.
