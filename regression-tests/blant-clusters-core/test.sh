@@ -119,5 +119,9 @@ skipped=`echo "$line" | sed 's/.*refined, \([0-9]*\) skipped.*/\1/'`
 # with -o 1 nothing can be more than 100% covered, so nothing is skipped
 run_clusters_stderr "-v -o 1" 0.125 | grep -q "CORE refinement: [0-9]* refined, 0 skipped" || fail "-o 1 still skipped communities"
 
+# test_growth_cap: a community may at most double (check mode asserts it per community, in the runs above), and one
+# that grows into a community refined earlier is put back as the BFS found it; -v reports how many
+run_clusters_stderr "-v" 0.125 | grep -q "CORE refinement: .* [0-9]* reverted" || fail "no reverted counter with -v"
+
 echo 'Done testing blant-clusters -X'
 exit $exitCode
