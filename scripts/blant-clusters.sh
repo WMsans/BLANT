@@ -28,6 +28,7 @@ OPTIONS (added BEFORE the blant.exe name)
        it as a p-value and set the smallest cluster to whatever size gives the number of edges a p-value less than this;
        default behaviour is to demand a cluster whose number of edges has p-value < 1/(n choose 2)^2 (heuristic).
     -M largest: stop building a community if it reaches this size (default: no limit)
+    -X N: CORE refinement: up to N region-exploration rounds per community (default 20; 0 = off)
     -sSAMPLE_METHOD: BLANT's sampling method (reasonable choices are MCMC, NBE, EBE, or RES)
     -o OVERLAP: (default 0.5); the maximum allowed fractional overlap between a new cluster and any one previously discovered
 	cluster (though it can overlap by more than this with MULTIPLE previous clusters). If it overlaps more than this with
@@ -84,6 +85,10 @@ DENSITY_LEEWAY=0.95 # factor by which we can _initially_ keep a node in the clus
 SUBFINAL_SORT="-k 2nr -k 5n"
 BLANT_FILES=''
 
+# CORE refinement (region exploration, https://github.com/pieterhv/CORE)
+CORE_ITERS=20 # maximum region-exploration rounds per community (0 disables refinement entirely)
+CORE_STALL=5  # stop refining a community after this many consecutive rounds that fail to improve it
+
 while echo "X$1" | grep '^X-' >/dev/null; do # first argument is an option
     case "$1" in
     -1) ONLY_ONE=1; shift;;
@@ -111,10 +116,13 @@ while echo "X$1" | grep '^X-' >/dev/null; do # first argument is an option
     -o) OVERLAP="$2"; shift 2;;
     -o[0-9]*) OVERLAP="`echo $1|sed 's/^-o//'`"; shift 1;;
     -P[0-9]*) EDGE_PREDICT="`echo $1|sed 's/^-P//'`"; shift 1;;
+    -X) CORE_ITERS="$2"; shift 2;;
+    -X[0-9]*) CORE_ITERS="`echo $1|sed 's/^-X//'`"; shift 1;;
     -*) die "unknown option '$1'";;
     esac
 done
 
+echo "X$CORE_ITERS" | grep '^X[0-9][0-9]*$' >/dev/null || die "-X needs a non-negative integer, not '$CORE_ITERS'"
 [ $# -ne 4 ] && die "expecting exactly 4 mandatory arguments, but you supplied $#"
 
 # Temporary Filename + Directory (both, you can use either, note they'll have different random stuff in the XXXXXX part)

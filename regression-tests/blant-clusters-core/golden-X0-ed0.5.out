@@ -1,0 +1,120 @@
+12 nodes, 35/66 edges, 53.0303% density from k4, nodeSet { 6 24 30 35 39 215 224 286 381 514 544 617 }
+11 nodes, 31/55 edges, 56.3636% density from k4, nodeSet { 14 44 60 61 75 98 105 111 752 754 755 }
+10 nodes, 24/45 edges, 53.3333% density from k4, nodeSet { 24 35 39 130 215 473 492 839 1754 2155 }
+9 nodes, 26/36 edges, 72.2222% density from k4, nodeSet { 6 766 1031 1032 1033 1034 1035 1037 1060 }
+9 nodes, 19/36 edges, 52.7778% density from k4, nodeSet { 30 35 39 88 120 171 194 215 492 }
+9 nodes, 18/36 edges, 50% density from k4, nodeSet { 30 35 98 105 112 215 436 492 1522 }
+8 nodes, 17/28 edges, 60.7143% density from k4, nodeSet { 24 35 224 286 432 837 859 1754 }
+8 nodes, 14/28 edges, 50% density from k4, nodeSet { 14 44 60 513 752 756 856 860 }
+8 nodes, 14/28 edges, 50% density from k4, nodeSet { 197 350 351 511 516 522 750 1898 }
+8 nodes, 14/28 edges, 50% density from k4, nodeSet { 24 31 314 359 487 837 1306 1447 }
+8 nodes, 14/28 edges, 50% density from k4, nodeSet { 2 6 21 22 26 502 1111 1464 }
+8 nodes, 14/28 edges, 50% density from k4, nodeSet { 35 44 60 111 286 756 1342 1435 }
+8 nodes, 14/28 edges, 50% density from k4, nodeSet { 39 134 167 215 219 381 544 578 }
+8 nodes, 14/28 edges, 50% density from k4, nodeSet { 6 24 31 35 218 487 837 1299 }
+7 nodes, 15/21 edges, 71.4286% density from k4, nodeSet { 252 926 1256 1476 1477 1478 1479 }
+7 nodes, 13/21 edges, 61.9048% density from k4, nodeSet { 139 497 500 741 1210 1218 1631 }
+7 nodes, 11/21 edges, 52.381% density from k4, nodeSet { 59 134 179 381 762 1341 1524 }
+7 nodes, 11/21 edges, 52.381% density from k4, nodeSet { 98 106 121 1071 1072 1559 1560 }
+6 nodes, 9/15 edges, 60% density from k4, nodeSet { 38 788 1089 1090 1396 2632 }
+6 nodes, 9/15 edges, 60% density from k4, nodeSet { 44 98 110 492 856 1209 }
+6 nodes, 9/15 edges, 60% density from k4, nodeSet { 6 24 39 487 826 1220 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 143 350 516 522 907 910 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 24 35 139 837 979 1053 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 350 516 522 624 911 1224 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 35 177 215 492 516 1435 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 35 206 215 492 510 1392 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 44 106 143 436 492 513 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 44 78 98 115 492 579 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 44 98 102 105 313 492 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 500 502 760 1042 1397 1551 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 5 6 825 826 1840 1841 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 6 143 350 514 522 837 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 6 30 35 436 493 1310 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 6 314 837 1211 1305 2070 }
+6 nodes, 8/15 edges, 53.3333% density from k4, nodeSet { 675 1033 1044 1045 1046 1396 }
+5 nodes, 6/10 edges, 60% density from k4, nodeSet { 130 473 487 1290 1696 }
+5 nodes, 6/10 edges, 60% density from k4, nodeSet { 150 440 442 444 770 }
+5 nodes, 6/10 edges, 60% density from k4, nodeSet { 260 349 351 1810 1811 }
+5 nodes, 6/10 edges, 60% density from k4, nodeSet { 35 155 491 879 880 }
+5 nodes, 6/10 edges, 60% density from k4, nodeSet { 497 788 825 1107 1202 }
+5 nodes, 6/10 edges, 60% density from k4, nodeSet { 6 239 286 1962 1963 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 105 167 199 362 1720 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 105 306 307 768 1519 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 106 192 514 825 1362 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 113 532 1272 2070 2183 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 1178 1367 1706 2319 2320 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 124 130 793 1435 1676 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 134 381 514 519 2296 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 139 444 856 857 1367 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 14 105 285 362 1475 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 167 172 1335 1392 1393 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 177 314 1089 1090 1091 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 177 362 811 1674 2460 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 21 24 25 487 2742 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 2 18 19 301 304 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 24 35 134 369 973 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 283 284 285 286 1541 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 29 37 118 130 218 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 30 428 594 755 756 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 31 330 332 337 341 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 31 35 406 408 409 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 31 40 203 487 1210 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 31 408 673 1040 2735 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 31 436 518 1435 1596 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 314 381 514 1864 2068 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 31 78 487 514 822 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 32 35 36 38 218 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 33 61 824 825 826 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 347 436 955 1509 1635 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 348 351 352 1653 1898 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 350 1366 1367 1368 1369 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 35 1362 1433 1435 1596 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 35 167 215 1335 1849 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 35 215 898 2136 2174 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 35 218 1345 1530 2056 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 35 218 436 1023 1635 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 35 38 47 436 1384 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 35 39 90 321 497 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 35 598 766 945 1033 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 35 65 1075 1081 1393 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 35 807 1586 1588 2159 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 36 430 479 1044 1045 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 38 176 382 1898 2202 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 39 353 356 359 360 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 436 950 953 955 1689 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 463 520 956 2352 2547 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 514 1040 1273 1883 1885 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 522 624 668 1371 1706 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 5 28 260 270 516 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 57 105 106 282 856 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 57 105 219 1258 1520 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 130 230 920 2173 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 130 652 1211 1216 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 14 60 832 2838 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 181 205 520 750 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 2004 2067 2103 2104 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 207 510 2070 2092 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 288 309 794 807 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 30 139 487 521 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 37 218 652 1220 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 38 176 286 288 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 39 1039 2004 2005 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 436 492 1600 1960 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 502 831 832 833 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 65 193 502 588 835 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 6 624 832 1065 1224 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 673 826 1044 1046 1047 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 71 75 77 78 270 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 73 105 447 705 1015 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 75 130 432 473 690 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 75 193 1272 1290 1691 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 762 1341 1512 1513 1903 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 7 72 244 270 1457 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 78 98 103 105 261 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 8 113 130 570 1135 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 90 447 668 1592 1706 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 950 1290 1689 1692 2322 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 98 105 122 1520 2419 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 98 105 125 151 1706 }
+5 nodes, 5/10 edges, 50% density from k4, nodeSet { 98 105 456 458 1467 }
