@@ -407,7 +407,7 @@ for edgeDensity in "${EDs[@]}"; do
 	    # Region size is random between an eighth and a half of S (at least 3, at most 200): measured on the PPI
 	    # networks, regions of 2 almost never succeed (fill has already tried every single node) while larger
 	    # ones succeed 10-35% of the time.
-	    function CoreRound(    before,eBefore,x,R,lo,hi,ok,G,i,j,d,t,v,m,n2,e2,found,done,step,seenV) {
+	    function CoreRound(    before,eBefore,x,R,lo,hi,ok,G,i,j,d,t,v,m,n2,e2,found,step,nRem,remV,remD,seenV) {
 		before=cN; eBefore=edgeCount;
 		x=CoreStart(); if(x=="") return 0;
 		lo=MAX(3,int(cN/8)); hi=MIN(200,MAX(lo,int(cN/2))); R=MIN(lo+int(rand()*(hi-lo+1)), maxClus-cN);
@@ -424,15 +424,26 @@ for edgeDensity in "${EDs[@]}"; do
 		# does removing at most j of the worst removable members make S valid, and larger or at least richer in
 		# edges than it was? Each removed member is assumed to take all its edges with it, which overstates the
 		# loss when two of them are adjacent, so this errs towards not trying.
-		found=0; step=MAX(1,int(nReg/8));
-		for(j=nReg; j>=2 && !found; j-=step) {
-		    n2=before+j; e2=eBefore+regG[j]; m=0; done=0; delete seenV;
-		    for(d=minIn; d<before && m<j && !done; d++) for(t=inTop[d]+0; t>0 && m<j; t--) {
+		# First list the nReg worst removable members, lowest degree first. Each bucket read is rewritten without
+		# its stale and repeated entries, so they are not waded through again next round.
+		nRem=0; delete seenV;
+		for(d=minIn; d<before && nRem<nReg; d++) {
+		    m=0;
+		    for(t=1; t<=inTop[d]+0; t++) {
 			v=inStk[d][t];
 			if((v in S) && !(v in seenV) && edgesIntoS[v]+0==d) {
-			    seenV[v]=1; ++m; --n2; e2-=d+regDeg[v];
-			    if(e2/(n2*(n2-1)/2) >= ED) { found=(n2>before || e2>eBefore); done=1; break; }
+			    seenV[v]=1; inStk[d][++m]=v;
+			    if(nRem<nReg) { remV[++nRem]=v; remD[nRem]=d; }
 			}
+		    }
+		    inTop[d]=m;
+		}
+		found=0; step=MAX(1,int(nReg/8));
+		for(j=nReg; j>=2 && !found; j-=step) {
+		    n2=before+j; e2=eBefore+regG[j];
+		    for(m=1; m<=nRem && m<=j; m++) {
+			--n2; e2-=remD[m]+regDeg[remV[m]];
+			if(e2/(n2*(n2-1)/2) >= ED) { found=(n2>before || e2>eBefore); break; }
 		    }
 		}
 		if(!found) return 0;
