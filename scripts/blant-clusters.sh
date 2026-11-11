@@ -236,7 +236,9 @@ for edgeDensity in "${EDs[@]}"; do
 	hawk ' # build the actual communities; may require huge amounts of RAM and CPU, eg 10GB and 12-24h for 9wiki-topcats
 	    BEGIN{if("'$RANDOM_SEED'") srand('$RANDOM_SEED');else Srand();OFS="\t"; ID=0; edgePredict='"$EDGE_PREDICT"';
 	ED='$edgeDensity'; maxClus='$maxClus'; coreIters='$CORE_ITERS'; coreStall='$CORE_STALL';
-	OVERLAP='$OVERLAP'; coreNoSkip=ENVIRON["BLANT_CLUSTERS_NOSKIP"]; # debugging: if set, refine even covered communities
+	OVERLAP='$OVERLAP'; minEdgeMean='$minEdgeMean'; coreNoSkip=ENVIRON["BLANT_CLUSTERS_NOSKIP"]; # debugging: if set, refine even covered communities
+	coreNoEstimate=ENVIRON["BLANT_CLUSTERS_NOESTIMATE"]; # debugging: if set, really add every region (exercises undo)
+	coreNoRounds=ENVIRON["BLANT_CLUSTERS_NOROUNDS"]; # debugging/benchmarking: if set, fill only, no region rounds
 	coreCheck=ENVIRON["BLANT_CLUSTERS_CHECK"]; # debugging: if set, verify every refined community (slow)
 		M=1*'$minClusArg'; if(M>=1) minClus=M;
 		else {
@@ -410,7 +412,7 @@ for edgeDensity in "${EDs[@]}"; do
 	    function CoreRound(    before,eBefore,x,R,lo,hi,ok,G,i,j,d,t,v,m,n2,e2,found,step,nRem,remV,remD,seenV) {
 		before=cN; eBefore=edgeCount;
 		x=CoreStart(); if(x=="") return 0;
-		lo=MAX(3,int(cN/8)); hi=MIN(200,MAX(lo,int(cN/2))); R=MIN(lo+int(rand()*(hi-lo+1)), maxClus-cN);
+		lo=MIN(200,MAX(3,int(cN/8))); hi=MIN(200,MAX(lo,int(cN/2))); R=MIN(lo+int(rand()*(hi-lo+1)), maxClus-cN);
 		if(R<1) return 0; # (the region may take S past coreCap for a moment; what is kept may not be)
 		delete reg; delete inReg; delete regDeg; delete regG; nReg=0; G=0;
 		while(x!="" && nReg<R) {
@@ -447,14 +449,17 @@ for edgeDensity in "${EDs[@]}"; do
 			if(n2<=coreCap && e2/(n2*(n2-1)/2) >= ED) { found=(n2>before || e2>eBefore); break; }
 		    }
 		}
-		if(!found) return 0;
+		if(!found) {
+		    if(!coreNoEstimate) return 0;
+		    j=nReg-step; # debugging: try the whole region for real anyway
+		}
 		nReg=j+step; # the prefix that passed
 		nLog=0; logging=1;
 		for(i=1;i<=nReg;i++) CoreAdd(reg[i]);
 		while(cN>1 && (cN>coreCap || !CoreValid()) && (x=CoreWorstIn())!="") CoreDrop(x);
 		CoreFill();
 		ok=(CoreValid() && cN<=coreCap && (cN>before || (cN==before && edgeCount>eBefore)));
-		if(!ok) CoreUndo();
+		if(!ok) { CoreUndo(); ++coreUndone; }
 		logging=0;
 		return ok;
 	    }
@@ -467,7 +472,7 @@ for edgeDensity in "${EDs[@]}"; do
 		coreCap=MIN(maxClus, 2*cN);
 		CoreFill();
 		# region rounds are the expensive part; a community still too small to be reported after filling is not worth them
-		no=0; if(cN>=minClus) for(it=1; it<=coreIters && no<coreStall; it++) if(CoreRound()) no=0; else ++no;
+		no=0; if(cN>=minClus && !coreNoRounds) for(it=1; it<=coreIters && no<coreStall; it++) if(CoreRound()) no=0; else ++no;
 		PROCINFO["sorted_in"]=oldOrder;
 	    }
 	    # Is more than the OVERLAP fraction of S inside one community that was refined earlier? The final overlap
@@ -478,7 +483,7 @@ for edgeDensity in "${EDs[@]}"; do
 		for(v in S) if(v in coreNodeClus) for(c in coreNodeClus[v]) if(++cnt[c] > lim) return 1;
 		return 0;
 	    }
-	    function CoreCheck(preN,preE,    u,v,w,e,n) { # debugging (BLANT_CLUSTERS_CHECK): the bookkeeping must match S
+	    function CoreCheck(preN,preE,preW,    u,v,w,e,n) { # debugging (BLANT_CLUSTERS_CHECK): the bookkeeping must match S
 		PROCINFO["sorted_in"]="";
 		n=length(S); e=InducedEdges(edge,S); w=0;
 		for(u in S) if(u in edge) for(v in S) if(v in edge[u]) w+=edge[u][v];
@@ -490,6 +495,8 @@ for edgeDensity in "${EDs[@]}"; do
 		ASSERT(n<=2*preN, "CoreCheck: grew from "preN" to "n", more than double");
 		ASSERT(n>preN || (n==preN && e>=preE), "CoreCheck: went from "preN" nodes, "preE" edges to "n", "e);
 		for(u in corePre) ASSERT(u in S, "CoreCheck: refinement removed "u", which the BFS had found");
+		ASSERT(preE==0 || preW/preE < minEdgeMean || (e>0 && w/2/e >= minEdgeMean),
+		    "CoreCheck: edge mean fell from "(preE?preW/preE:0)" to "(e?w/2/e:0)", below the threshold "minEdgeMean);
 		ASSERT(coreCheck!="selftest", "CoreCheck: selftest (this failure is deliberate)");
 	    }
 	    function highRelClusCount(u, v) { # Heuristic
@@ -615,13 +622,16 @@ for edgeDensity in "${EDs[@]}"; do
 			if(CoreCovered()) ++coreSkipped;
 			else {
 			    delete corePre; for(v in S) corePre[v]=1;
-			    corePreN=length(S); corePreE=edgeCount;
+			    corePreN=length(S); corePreE=edgeCount; corePreW=wgtEdgeCount;
 			    CoreRefine(); ++coreRefined;
-			    if(cN>corePreN && CoreCovered()) { # it grew into an earlier community: put it back as the BFS found it
+			    # Put it back as the BFS found it if it grew into an earlier community, or if the nodes added (chosen
+			    # without regard to edge weights) pulled its edge mean below the threshold it used to pass.
+			    if(cN>corePreN && (CoreCovered() || (corePreE>0 && corePreW/corePreE>=minEdgeMean &&
+							       wgtEdgeCount/edgeCount<minEdgeMean))) {
 				++coreReverted; delete coreGone; for(v in S) if(!(v in corePre)) coreGone[v]=1;
 				for(v in coreGone) CoreDrop(v);
 			    }
-			    if(coreCheck) CoreCheck(corePreN, corePreE);
+			    if(coreCheck) CoreCheck(corePreN, corePreE, corePreW);
 			    for(v in S) if(!(v in corePre)) Sorder[++sorderN]=v;
 			    if(length(S)>=minClus) for(v in S) coreNodeClus[v][coreRefined]=1;
 			}
@@ -648,8 +658,8 @@ for edgeDensity in "${EDs[@]}"; do
 		    }
 		}
 		if('$VERBOSE' && coreIters>0)
-		    printf "CORE refinement: %d refined, %d skipped (already covered), %d reverted (grew into an earlier one)\n",
-			coreRefined, coreSkipped, coreReverted >"/dev/stderr"
+		    printf "CORE refinement: %d refined, %d skipped (already covered), %d reverted, %d rounds undone\n",
+			coreRefined, coreSkipped, coreReverted, coreUndone >"/dev/stderr"
 	    }' "$TMPDIR/net4awk.el$W" - | # dash is the output of the above pipe (sorted cluster counts)
 	sort -T $TMPDIR -nr |
 	hawk ' # remove duplicate clusters
