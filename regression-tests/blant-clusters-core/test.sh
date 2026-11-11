@@ -68,11 +68,12 @@ distinct_members() { awk '{n=0; delete seen; for(i=1;i<=NF;i++) if($i=="{") brea
 
 gen_twocore "" > $TMP/twocore.el; make_samples twocore || fail "could not sample twocore"
 
-# test_region_joins_cores: BLANT's own samples already link the two cores, so hide core B from the BFS by removing
-# every sample line and neighbor that mentions a B node or B satellite. The BFS then builds only A (plus satellites),
-# and core B can be reached only by refinement over real edges: region rounds join the cores, filling alone cannot.
+# test_region_joins_cores: BLANT's own samples already link the two cores, so show the BFS only core A by removing
+# every sample line and neighbor that mentions anything else. The BFS then builds exactly A; filling adds satellites
+# until it is stuck at 18 nodes; core B can be reached only by a region round, which gives the satellites up for it.
+# (The satellites must come from filling, not from the BFS: refinement never removes what the BFS found.)
 mkdir -p $TMP/blind && cp $TMP/twocore.el $TMP/blind.el
-awk '$1!~/^[bt]/{out=$1" "$2" "$3"\t"; for(i=4;i<=NF;i++) if($i!~/^[bt]/) out=out" "$i; print out}' $TMP/twocore/blant4.out > $TMP/blind/blant4.out
+awk '$1~/^a/{out=$1" "$2" "$3"\t"; for(i=4;i<=NF;i++) if($i~/^a/) out=out" "$i; print out}' $TMP/twocore/blant4.out > $TMP/blind/blant4.out
 run_on blind "-m 5" 0.5 > $TMP/blind.out || fail "two-core: script exited non-zero"
 bigX=`biggest $TMP/blind.out`
 [ "$bigX" -ge 20 ] || fail "two-core: biggest cluster is $bigX nodes, expected at least 20 (both cores)"
