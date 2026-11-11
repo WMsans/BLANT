@@ -123,5 +123,23 @@ run_clusters_stderr "-v -o 1" 0.125 | grep -q "CORE refinement: [0-9]* refined, 
 # that grows into a community refined earlier is put back as the BFS found it; -v reports how many
 run_clusters_stderr "-v" 0.125 | grep -q "CORE refinement: .* [0-9]* reverted" || fail "no reverted counter with -v"
 
+# test_weighted_not_lost: refinement ignores weights, so it can dilute a community below the -emt edge-mean threshold.
+# A community that passed the threshold as the BFS found it must not be lost that way (check mode asserts it).
+# Weights 0.2/0.55/0.9 straddle the default threshold of 0.5.
+awk '{printf "%s\t%s\t%g\n", $1, $2, (NR%3==0?0.2:NR%3==1?0.55:0.9)}' networks/CElegans.el > $TMP/cw2.elw
+make_samples cw2 -w || fail "could not sample second weighted network"
+for ed in 0.5 0.25; do
+    BLANT_CLUSTERS_CHECK=1 run_on cw2 "-w" $ed >/dev/null || fail "weighted (straddling -emt) check failed at ED $ed: `tail -2 $TMP/stderr`"
+done
+
+# test_undo: with the estimate switched off every region is really added and trimmed, so most rounds fail and are
+# undone; check mode then verifies that S, the edge count and the weight came back exactly. -v reports the undos.
+for ed in 0.5 0.125; do
+    BLANT_CLUSTERS_NOESTIMATE=1 BLANT_CLUSTERS_CHECK=1 run_clusters "-v" $ed >/dev/null || fail "check failed with undo forced at ED $ed: `tail -2 $TMP/stderr`"
+    undone=`grep "CORE refinement" -A2 $TMP/stderr | tr '\n' ' ' | sed -n 's/.* \([0-9][0-9]*\) rounds undone.*/\1/p'`
+    [ "${undone:-0}" -gt 20 ] || fail "ED $ed: expected many undone rounds with the estimate off, got '${undone}'"
+done
+BLANT_CLUSTERS_NOESTIMATE=1 BLANT_CLUSTERS_CHECK=1 run_on cw2 "-w" 0.5 >/dev/null || fail "weighted check failed with undo forced: `tail -2 $TMP/stderr`"
+
 echo 'Done testing blant-clusters -X'
 exit $exitCode
