@@ -28,7 +28,9 @@ OPTIONS (added BEFORE the blant.exe name)
        it as a p-value and set the smallest cluster to whatever size gives the number of edges a p-value less than this;
        default behaviour is to demand a cluster whose number of edges has p-value < 1/(n choose 2)^2 (heuristic).
     -M largest: stop building a community if it reaches this size (default: no limit)
-    -X N: CORE refinement: up to N region-exploration rounds per community (default 20; 0 = off)
+    -X N: CORE refinement: grow each community while its density stays above the threshold, then try up to N
+	region-exploration rounds on it. Default (no -X): grow only, no region rounds. 0 = off (no refinement at all).
+	Region rounds (eg -X 20) enlarge the second-tier communities in about half of cases, at roughly 25% more time.
     -sSAMPLE_METHOD: BLANT's sampling method (reasonable choices are MCMC, NBE, EBE, or RES)
     -o OVERLAP: (default 0.5); the maximum allowed fractional overlap between a new cluster and any one previously discovered
 	cluster (though it can overlap by more than this with MULTIPLE previous clusters). If it overlaps more than this with
@@ -86,7 +88,9 @@ SUBFINAL_SORT="-k 2nr -k 5n"
 BLANT_FILES=''
 
 # CORE refinement (region exploration, https://github.com/pieterhv/CORE)
-CORE_ITERS=20 # maximum region-exploration rounds per community (0 disables refinement entirely)
+CORE_REFINE=1 # grow each community after the BFS; -X 0 switches this (and so all refinement) off
+CORE_ITERS=0  # maximum region-exploration rounds per community, on top of growing it; set by -X N
+CORE_X_GIVEN=false
 CORE_STALL=5  # stop refining a community after this many consecutive rounds that fail to improve it
 
 while echo "X$1" | grep '^X-' >/dev/null; do # first argument is an option
@@ -116,13 +120,14 @@ while echo "X$1" | grep '^X-' >/dev/null; do # first argument is an option
     -o) OVERLAP="$2"; shift 2;;
     -o[0-9]*) OVERLAP="`echo $1|sed 's/^-o//'`"; shift 1;;
     -P[0-9]*) EDGE_PREDICT="`echo $1|sed 's/^-P//'`"; shift 1;;
-    -X) CORE_ITERS="$2"; shift 2;;
-    -X[0-9]*) CORE_ITERS="`echo $1|sed 's/^-X//'`"; shift 1;;
+    -X) CORE_ITERS="$2"; CORE_X_GIVEN=true; shift 2;;
+    -X[0-9]*) CORE_ITERS="`echo $1|sed 's/^-X//'`"; CORE_X_GIVEN=true; shift 1;;
     -*) die "unknown option '$1'";;
     esac
 done
 
 echo "X$CORE_ITERS" | grep '^X[0-9][0-9]*$' >/dev/null || die "-X needs a non-negative integer, not '$CORE_ITERS'"
+$CORE_X_GIVEN && [ "$CORE_ITERS" -eq 0 ] && CORE_REFINE=0
 [ $# -ne 4 ] && die "expecting exactly 4 mandatory arguments, but you supplied $#"
 
 # Temporary Filename + Directory (both, you can use either, note they'll have different random stuff in the XXXXXX part)
@@ -235,7 +240,7 @@ for edgeDensity in "${EDs[@]}"; do
 	sort -T $TMPDIR -gr | # > $BLANT_FILES/clus$k.sorted  # sorted [weighted] cluster-counts of all the nodes, largest-to-smallest
 	hawk ' # build the actual communities; may require huge amounts of RAM and CPU, eg 10GB and 12-24h for 9wiki-topcats
 	    BEGIN{if("'$RANDOM_SEED'") srand('$RANDOM_SEED');else Srand();OFS="\t"; ID=0; edgePredict='"$EDGE_PREDICT"';
-	ED='$edgeDensity'; maxClus='$maxClus'; coreIters='$CORE_ITERS'; coreStall='$CORE_STALL';
+	ED='$edgeDensity'; maxClus='$maxClus'; coreRefine='$CORE_REFINE'; coreIters='$CORE_ITERS'; coreStall='$CORE_STALL';
 	OVERLAP='$OVERLAP'; minEdgeMean='$minEdgeMean'; coreNoSkip=ENVIRON["BLANT_CLUSTERS_NOSKIP"]; # debugging: if set, refine even covered communities
 	coreNoEstimate=ENVIRON["BLANT_CLUSTERS_NOESTIMATE"]; # debugging: if set, really add every region (exercises undo)
 	coreNoRounds=ENVIRON["BLANT_CLUSTERS_NOROUNDS"]; # debugging/benchmarking: if set, fill only, no region rounds
@@ -472,7 +477,7 @@ for edgeDensity in "${EDs[@]}"; do
 		coreCap=MIN(maxClus, 2*cN);
 		CoreFill();
 		# region rounds are the expensive part; a community still too small to be reported after filling is not worth them
-		no=0; if(cN>=minClus && !coreNoRounds) for(it=1; it<=coreIters && no<coreStall; it++) if(CoreRound()) no=0; else ++no;
+		no=0; if(cN>=minClus && !coreNoRounds) for(it=1; it<=coreIters && no<coreStall; it++) { ++coreRounds; if(CoreRound()) no=0; else ++no; }
 		PROCINFO["sorted_in"]=oldOrder;
 	    }
 	    # Is more than the OVERLAP fraction of S inside one community that was refined earlier? The final overlap
@@ -617,7 +622,7 @@ for edgeDensity in "${EDs[@]}"; do
 			ed = edgeCount / choose(length(S),2);
 			WARN(ed >= '$edgeDensity',"hmmm, ed is "ed);
 		    }
-		    if(coreIters>0 && length(S)>=2 && length(S)<maxClus && edgeCount/choose(length(S),2)>=ED) {
+		    if(coreRefine && length(S)>=2 && length(S)<maxClus && edgeCount/choose(length(S),2)>=ED) {
 			oldOrder=PROCINFO["sorted_in"]; PROCINFO["sorted_in"]="";
 			if(CoreCovered()) ++coreSkipped;
 			else {
@@ -657,9 +662,9 @@ for edgeDensity in "${EDs[@]}"; do
 			for(i=1;i<Slen*(1-'$OVERLAP');i++) started[Sorder[i]]=1;
 		    }
 		}
-		if('$VERBOSE' && coreIters>0)
-		    printf "CORE refinement: %d refined, %d skipped (already covered), %d reverted, %d rounds undone\n",
-			coreRefined, coreSkipped, coreReverted, coreUndone >"/dev/stderr"
+		if('$VERBOSE' && coreRefine)
+		    printf "CORE refinement: %d refined, %d skipped (already covered), %d reverted, %d region rounds, %d rounds undone\n",
+			coreRefined, coreSkipped, coreReverted, coreRounds, coreUndone >"/dev/stderr"
 	    }' "$TMPDIR/net4awk.el$W" - | # dash is the output of the above pipe (sorted cluster counts)
 	sort -T $TMPDIR -nr |
 	hawk ' # remove duplicate clusters

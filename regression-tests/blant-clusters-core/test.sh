@@ -74,15 +74,21 @@ gen_twocore "" > $TMP/twocore.el; make_samples twocore || fail "could not sample
 # (The satellites must come from filling, not from the BFS: refinement never removes what the BFS found.)
 mkdir -p $TMP/blind && cp $TMP/twocore.el $TMP/blind.el
 awk '$1~/^a/{out=$1" "$2" "$3"\t"; for(i=4;i<=NF;i++) if($i~/^a/) out=out" "$i; print out}' $TMP/twocore/blant4.out > $TMP/blind/blant4.out
-run_on blind "-m 5" 0.5 > $TMP/blind.out || fail "two-core: script exited non-zero"
+run_on blind "-m 5 -X 20" 0.5 > $TMP/blind.out || fail "two-core: script exited non-zero"
 bigX=`biggest $TMP/blind.out`
-[ "$bigX" -ge 20 ] || fail "two-core: biggest cluster is $bigX nodes, expected at least 20 (both cores)"
-[ "`run_on blind "-m 5 -X 0" 0.5 | biggest -`" -lt 20 ] || fail "two-core: the BFS alone reached core B, so this test proves nothing"
-BLANT_CLUSTERS_CHECK=1 run_on blind "-m 5" 0.5 >/dev/null || fail "invariant check failed on blind twocore: `tail -2 $TMP/stderr`"
+[ "$bigX" -ge 20 ] || fail "two-core: biggest cluster is $bigX nodes with -X 20, expected at least 20 (both cores)"
+[ "`run_on blind "-m 5 -X 0" 0.5 | biggest -`" -eq 12 ] || fail "two-core: with -X 0 the BFS should find exactly core A (12 nodes)"
+BLANT_CLUSTERS_CHECK=1 run_on blind "-m 5 -X 20" 0.5 >/dev/null || fail "invariant check failed on blind twocore: `tail -2 $TMP/stderr`"
+# test_default_is_fill_only: without -X the community is filled but no region round runs, so core A stops at 18 nodes
+[ "`run_on blind "-m 5" 0.5 | biggest -`" -eq 18 ] || fail "two-core: default (fill only) should stop at 18 nodes, got `run_on blind "-m 5" 0.5 | biggest -`"
+run_clusters_stderr "-v" 0.5 | grep -q "CORE refinement: .* 0 region rounds" || fail "default ran region rounds: `grep 'CORE refinement' -A1 $TMP/stderr | tr '\n' ' '`"
+run_clusters_stderr "-v -X 20" 0.5 | grep "CORE refinement" -A1 | tr '\n' ' ' | grep -q " [1-9][0-9]* region rounds" || fail "-X 20 ran no region rounds"
 
 # test_invariants (rejected rounds restore S exactly; counts stay true): check mode on CElegans and twocore
-BLANT_CLUSTERS_CHECK=1 run_clusters "" 0.5   >/dev/null || fail "invariant check failed at 0.5: `tail -2 $TMP/stderr`"
-BLANT_CLUSTERS_CHECK=1 run_clusters "" 0.125 >/dev/null || fail "invariant check failed at 0.125: `tail -2 $TMP/stderr`"
+for x in "" "-X 20"; do
+    BLANT_CLUSTERS_CHECK=1 run_clusters "$x" 0.5   >/dev/null || fail "invariant check failed at 0.5 with '$x': `tail -2 $TMP/stderr`"
+    BLANT_CLUSTERS_CHECK=1 run_clusters "$x" 0.125 >/dev/null || fail "invariant check failed at 0.125 with '$x': `tail -2 $TMP/stderr`"
+done
 BLANT_CLUSTERS_CHECK=1 run_on twocore "-m 5" 0.5 >/dev/null || fail "invariant check failed on twocore: `tail -2 $TMP/stderr`"
 # the check must be able to fail: BLANT_CLUSTERS_CHECK=selftest makes it assert a false statement
 BLANT_CLUSTERS_CHECK=selftest run_on twocore "-m 5" 0.5 >/dev/null 2>&1 && fail "check mode cannot fail"
@@ -94,19 +100,19 @@ bigM=`run_clusters "-M 15" 0.125 | biggest -`
 # test_weighted: weights 0.6/0.8/1.0 by line number; weighted edge sums must stay true through refinement
 awk '{printf "%s\t%s\t%g\n", $1, $2, 0.6+0.2*(NR%3)}' networks/CElegans.el > $TMP/cw.elw
 make_samples cw -w || fail "could not sample weighted network"
-BLANT_CLUSTERS_CHECK=1 run_on cw "-w" 0.5 > $TMP/cw.out || fail "weighted invariant check failed: `tail -2 $TMP/stderr`"
+BLANT_CLUSTERS_CHECK=1 run_on cw "-w -X 20" 0.5 > $TMP/cw.out || fail "weighted invariant check failed: `tail -2 $TMP/stderr`"
 [ -s $TMP/cw.out ] || fail "weighted run produced no clusters"
 
 # test_tiny: two disjoint 5-cliques have no outside neighbors at all; refinement must stop cleanly and change nothing
 awk 'BEGIN{for(i=1;i<=5;i++)for(j=i+1;j<=5;j++){print "c"i"\tc"j; print "d"i"\td"j}}' > $TMP/tiny.el
 make_samples tiny || fail "could not sample tiny network"
-BLANT_CLUSTERS_CHECK=1 run_on tiny "-m 2" 1 > $TMP/tiny.out || fail "tiny: script exited non-zero: `tail -2 $TMP/stderr`"
+BLANT_CLUSTERS_CHECK=1 run_on tiny "-m 2 -X 20" 1 > $TMP/tiny.out || fail "tiny: script exited non-zero: `tail -2 $TMP/stderr`"
 [ "`stats $TMP/tiny.out | cut -d' ' -f1,2`" = "2 5" ] || fail "tiny: expected two 5-node clusters, got `stats $TMP/tiny.out`"
 
 # test_long_ids: 18-digit node IDs sharing a 15-digit prefix (as in FlyWire) must stay distinct nodes
 gen_twocore "" | awk '{for(i=1;i<=2;i++) if(!($i in id)) id[$i]=sprintf("720575940621287%03d", ++n); print id[$1]"\t"id[$2]}' > $TMP/longid.el
 make_samples longid || fail "could not sample long-id network"
-BLANT_CLUSTERS_CHECK=1 run_on longid "-m 5" 0.5 > $TMP/longid.out || fail "long ids: script exited non-zero: `tail -2 $TMP/stderr`"
+BLANT_CLUSTERS_CHECK=1 run_on longid "-m 5 -X 20" 0.5 > $TMP/longid.out || fail "long ids: script exited non-zero: `tail -2 $TMP/stderr`"
 distinct_members $TMP/longid.out || fail "long ids: a cluster lists a node twice or miscounts its members"
 [ "`biggest $TMP/longid.out`" -ge 20 ] || fail "long ids: biggest cluster `biggest $TMP/longid.out`, expected at least 20"
 
@@ -135,11 +141,11 @@ done
 # test_undo: with the estimate switched off every region is really added and trimmed, so most rounds fail and are
 # undone; check mode then verifies that S, the edge count and the weight came back exactly. -v reports the undos.
 for ed in 0.5 0.125; do
-    BLANT_CLUSTERS_NOESTIMATE=1 BLANT_CLUSTERS_CHECK=1 run_clusters "-v" $ed >/dev/null || fail "check failed with undo forced at ED $ed: `tail -2 $TMP/stderr`"
+    BLANT_CLUSTERS_NOESTIMATE=1 BLANT_CLUSTERS_CHECK=1 run_clusters "-v -X 20" $ed >/dev/null || fail "check failed with undo forced at ED $ed: `tail -2 $TMP/stderr`"
     undone=`grep "CORE refinement" -A2 $TMP/stderr | tr '\n' ' ' | sed -n 's/.* \([0-9][0-9]*\) rounds undone.*/\1/p'`
     [ "${undone:-0}" -gt 20 ] || fail "ED $ed: expected many undone rounds with the estimate off, got '${undone}'"
 done
-BLANT_CLUSTERS_NOESTIMATE=1 BLANT_CLUSTERS_CHECK=1 run_on cw2 "-w" 0.5 >/dev/null || fail "weighted check failed with undo forced: `tail -2 $TMP/stderr`"
+BLANT_CLUSTERS_NOESTIMATE=1 BLANT_CLUSTERS_CHECK=1 run_on cw2 "-w -X 20" 0.5 >/dev/null || fail "weighted check failed with undo forced: `tail -2 $TMP/stderr`"
 
 echo 'Done testing blant-clusters -X'
 exit $exitCode
