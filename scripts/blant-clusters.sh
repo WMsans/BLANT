@@ -30,7 +30,7 @@ OPTIONS (added BEFORE the blant.exe name)
     -M largest: stop building a community if it reaches this size (default: no limit)
     -X N: CORE refinement: grow each community while its density stays above the threshold, then try up to N
 	region-exploration rounds on it. Default (no -X): grow only, no region rounds. 0 = off (no refinement at all).
-	Region rounds (eg -X 20) enlarge the second-tier communities in about half of cases, at roughly 25% more time.
+	Region rounds (eg -X 20) take roughly 25% more time and, on the networks tested, rarely enlarge the biggest community.
     -sSAMPLE_METHOD: BLANT's sampling method (reasonable choices are MCMC, NBE, EBE, or RES)
     -o OVERLAP: (default 0.5); the maximum allowed fractional overlap between a new cluster and any one previously discovered
 	cluster (though it can overlap by more than this with MULTIPLE previous clusters). If it overlaps more than this with
