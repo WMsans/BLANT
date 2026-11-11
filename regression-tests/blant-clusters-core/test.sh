@@ -14,8 +14,10 @@ trap "/bin/rm -rf $TMP" 0
 exitCode=0
 fail() { echo "FAILED: $@" >&2; exitCode=1; }
 
-# run_net NETFILE SAMPLEDIR OPTS ED: cluster lines on stdout, exit status of the script
-run_net() { ./scripts/blant-clusters.sh $3 -T $TMP -D $2 -r 1 ./blant 4 $4 $1 2>$TMP/stderr; }
+# run_net NETFILE SAMPLEDIR OPTS ED: cluster lines on stdout; fails if the script fails or any stage reports an
+# assertion failure (the script's own exit status does not cover the awk stages inside its pipelines)
+run_net() { ./scripts/blant-clusters.sh $3 -T $TMP -D $2 -r 1 ./blant 4 $4 $1 2>$TMP/stderr || return 1
+    if grep -q "ASSERTION failure" $TMP/stderr; then return 1; fi; }
 # run_clusters OPTS ED: the saved CElegans samples
 run_clusters() { run_net networks/CElegans.el $TEST_DIR/samples "$1" $2; }
 run_clusters_stderr() { run_clusters "$1" $2 >/dev/null; cat $TMP/stderr; }
@@ -35,17 +37,77 @@ for ed in 0.5 0.125; do
 done
 
 # test_density_floor: no cluster below ED with refinement on
-# test_not_smaller: biggest cluster and top-5 size sum are >= golden (top 5, not 10: larger clusters overlap more, so fewer survive de-duplication), and something got larger
+# test_bigger: the biggest cluster is larger than without refinement. (Only the biggest is compared: every community
+# can only gain nodes, which check mode verifies per community below, but larger communities overlap more, so on a
+# small network fewer of them survive the overlap filter and rank-by-rank sizes are not comparable.)
 # test_repeatable: same seed twice gives identical output
 for ed in 0.5 0.125; do
     run_clusters "" $ed > $TMP/new-$ed.out || fail "ED $ed: script exited non-zero"
     read c big top minD <<< "`stats $TMP/new-$ed.out`"
     read gc gbig gtop gminD <<< "`stats $TEST_DIR/golden-X0-ed$ed.out`"
     awk "BEGIN{exit !($minD >= $ed)}"        || fail "cluster below ED $ed: $minD"
-    [ $big -ge $gbig ] && [ $top -ge $gtop ] || fail "ED $ed: biggest $big (golden $gbig), top5 $top (golden $gtop)"
-    [ $top -gt $gtop ]                       || fail "ED $ed: refinement enlarged nothing"
+    [ $c -ge 1 ] && [ $big -gt $gbig ]       || fail "ED $ed: $c clusters, biggest $big; without refinement $gc clusters, biggest $gbig"
     run_clusters "" $ed | cmp -s - $TMP/new-$ed.out || fail "ED $ed: not repeatable with -r 1"
 done
+
+# ---- generated networks
+# twocore: CORE's motivating example. Core A is a 12-clique, core B an 8-clique, joined by only two bridge edges
+# (a1-b1, a2-b2). Each core has satellites with 2 edges into it. At ED 0.5, growing A one node at a time gets stuck
+# on satellites at 18 nodes (78/153); A plus B together is 20 nodes (96/190), reachable from A only by adding a
+# group of B nodes at once, which is what region exploration does.
+gen_twocore() { awk -v pre="$1" 'BEGIN{
+    for(i=1;i<=12;i++) for(j=i+1;j<=12;j++) print pre"a"i, pre"a"j;
+    for(i=1;i<=8;i++) { for(j=i+1;j<=8;j++) print pre"b"i, pre"b"j; if(i<=2) print pre"b"i, pre"a"i; }
+    for(i=1;i<=12;i++) { print pre"s"i, pre"a"i; print pre"s"i, pre"a"(i%12+1); }
+    for(i=1;i<=8;i++)  { print pre"t"i, pre"b"i; print pre"t"i, pre"b"(i%8+1); }
+  }' | tr ' ' '\t'; }
+biggest() { stats "$@" | cut -d' ' -f2; }
+# distinct_members FILE: fails if any cluster lists a node twice or its node count disagrees with its member list
+distinct_members() { awk '{n=0; delete seen; for(i=1;i<=NF;i++) if($i=="{") break; for(++i;i<NF;i++) if(!seen[$i]++) ++n;
+	if(n!=$1) bad=1} END{exit bad}' "$@"; }
+
+gen_twocore "" > $TMP/twocore.el; make_samples twocore || fail "could not sample twocore"
+
+# test_region_joins_cores: BLANT's own samples already link the two cores, so hide core B from the BFS by removing
+# every sample line and neighbor that mentions a B node or B satellite. The BFS then builds only A (plus satellites),
+# and core B can be reached only by refinement over real edges: region rounds join the cores, filling alone cannot.
+mkdir -p $TMP/blind && cp $TMP/twocore.el $TMP/blind.el
+awk '$1!~/^[bt]/{out=$1" "$2" "$3"\t"; for(i=4;i<=NF;i++) if($i!~/^[bt]/) out=out" "$i; print out}' $TMP/twocore/blant4.out > $TMP/blind/blant4.out
+run_on blind "-m 5" 0.5 > $TMP/blind.out || fail "two-core: script exited non-zero"
+bigX=`biggest $TMP/blind.out`
+[ "$bigX" -ge 20 ] || fail "two-core: biggest cluster is $bigX nodes, expected at least 20 (both cores)"
+[ "`run_on blind "-m 5 -X 0" 0.5 | biggest -`" -lt 20 ] || fail "two-core: the BFS alone reached core B, so this test proves nothing"
+BLANT_CLUSTERS_CHECK=1 run_on blind "-m 5" 0.5 >/dev/null || fail "invariant check failed on blind twocore: `tail -2 $TMP/stderr`"
+
+# test_invariants (rejected rounds restore S exactly; counts stay true): check mode on CElegans and twocore
+BLANT_CLUSTERS_CHECK=1 run_clusters "" 0.5   >/dev/null || fail "invariant check failed at 0.5: `tail -2 $TMP/stderr`"
+BLANT_CLUSTERS_CHECK=1 run_clusters "" 0.125 >/dev/null || fail "invariant check failed at 0.125: `tail -2 $TMP/stderr`"
+BLANT_CLUSTERS_CHECK=1 run_on twocore "-m 5" 0.5 >/dev/null || fail "invariant check failed on twocore: `tail -2 $TMP/stderr`"
+# the check must be able to fail: BLANT_CLUSTERS_CHECK=selftest makes it assert a false statement
+BLANT_CLUSTERS_CHECK=selftest run_on twocore "-m 5" 0.5 >/dev/null 2>&1 && fail "check mode cannot fail"
+
+# test_max_size: -M 15 caps every cluster at 15
+bigM=`run_clusters "-M 15" 0.125 | biggest -`
+[ "$bigM" -le 15 ] && [ "$bigM" -ge 1 ] || fail "-M 15 exceeded or no clusters: biggest $bigM"
+
+# test_weighted: weights 0.6/0.8/1.0 by line number; weighted edge sums must stay true through refinement
+awk '{printf "%s\t%s\t%g\n", $1, $2, 0.6+0.2*(NR%3)}' networks/CElegans.el > $TMP/cw.elw
+make_samples cw -w || fail "could not sample weighted network"
+BLANT_CLUSTERS_CHECK=1 run_on cw "-w" 0.5 > $TMP/cw.out || fail "weighted invariant check failed: `tail -2 $TMP/stderr`"
+[ -s $TMP/cw.out ] || fail "weighted run produced no clusters"
+
+# test_tiny: two disjoint 5-cliques have no outside neighbors at all; refinement must stop cleanly and change nothing
+awk 'BEGIN{for(i=1;i<=5;i++)for(j=i+1;j<=5;j++){print "c"i"\tc"j; print "d"i"\td"j}}' > $TMP/tiny.el
+make_samples tiny || fail "could not sample tiny network"
+BLANT_CLUSTERS_CHECK=1 run_on tiny "-m 2" 1 > $TMP/tiny.out || fail "tiny: script exited non-zero: `tail -2 $TMP/stderr`"
+[ "`stats $TMP/tiny.out | cut -d' ' -f1,2`" = "2 5" ] || fail "tiny: expected two 5-node clusters, got `stats $TMP/tiny.out`"
+
+# test_long_ids: 18-digit node IDs sharing a 15-digit prefix (as in FlyWire) must stay distinct nodes
+gen_twocore "" | awk '{for(i=1;i<=2;i++) if(!($i in id)) id[$i]=sprintf("720575940621287%03d", ++n); print id[$1]"\t"id[$2]}' > $TMP/longid.el
+make_samples longid || fail "could not sample long-id network"
+BLANT_CLUSTERS_CHECK=1 run_on longid "-m 5" 0.5 > $TMP/longid.out || fail "long ids: script exited non-zero: `tail -2 $TMP/stderr`"
+distinct_members $TMP/longid.out || fail "long ids: a cluster lists a node twice or miscounts its members"
+[ "`biggest $TMP/longid.out`" -ge 20 ] || fail "long ids: biggest cluster `biggest $TMP/longid.out`, expected at least 20"
 
 echo 'Done testing blant-clusters -X'
 exit $exitCode
