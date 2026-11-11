@@ -24,14 +24,27 @@ run_on() { local net=$TMP/$1.el; [ -f $net ] || net=$TMP/$1.elw; run_net $net $T
 # make_samples NAME [blant options]: sample a generated network with the same command blant-clusters uses
 make_samples() { local name=$1; shift; local net=$TMP/$name.el; [ -f $net ] || net=$TMP/$name.elw
     mkdir -p $TMP/$name && ./blant -p0.9L -q "$@" -r 1 -k4 -sEBE -mcg $net > $TMP/$name/blant4.out 2>/dev/null; }
-# stats FILE: "count biggest top10sum minDensity" for lines "N nodes, e/m edges, D% density ..."
-stats() { sort -k1,1nr "$@" | awk '{split($3,a,"/"); d=a[1]/a[2]; if(NR==1||d<minD)minD=d; if(NR==1)big=$1; if(NR<=10)top+=$1}
+# stats FILE: "count biggest top5sum minDensity" for lines "N nodes, e/m edges, D% density ..."
+stats() { sort -k1,1nr "$@" | awk '{split($3,a,"/"); d=a[1]/a[2]; if(NR==1||d<minD)minD=d; if(NR==1)big=$1; if(NR<=5)top+=$1}
 	END{printf "%d %d %d %.6f\n", NR, big, top, (NR?minD:1)}'; }
 
 # test_X0_identical: -X 0 and -X0 reproduce the pre-change output byte for byte
 for ed in 0.5 0.125; do
     run_clusters "-X 0" $ed | cmp -s - $TEST_DIR/golden-X0-ed$ed.out || fail "-X 0 differs from golden at ED $ed"
     run_clusters "-X0"  $ed | cmp -s - $TEST_DIR/golden-X0-ed$ed.out || fail "-X0 differs from golden at ED $ed"
+done
+
+# test_density_floor: no cluster below ED with refinement on
+# test_not_smaller: biggest cluster and top-5 size sum are >= golden (top 5, not 10: larger clusters overlap more, so fewer survive de-duplication), and something got larger
+# test_repeatable: same seed twice gives identical output
+for ed in 0.5 0.125; do
+    run_clusters "" $ed > $TMP/new-$ed.out || fail "ED $ed: script exited non-zero"
+    read c big top minD <<< "`stats $TMP/new-$ed.out`"
+    read gc gbig gtop gminD <<< "`stats $TEST_DIR/golden-X0-ed$ed.out`"
+    awk "BEGIN{exit !($minD >= $ed)}"        || fail "cluster below ED $ed: $minD"
+    [ $big -ge $gbig ] && [ $top -ge $gtop ] || fail "ED $ed: biggest $big (golden $gbig), top5 $top (golden $gtop)"
+    [ $top -gt $gtop ]                       || fail "ED $ed: refinement enlarged nothing"
+    run_clusters "" $ed | cmp -s - $TMP/new-$ed.out || fail "ED $ed: not repeatable with -r 1"
 done
 
 echo 'Done testing blant-clusters -X'

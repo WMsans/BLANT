@@ -235,6 +235,7 @@ for edgeDensity in "${EDs[@]}"; do
 	sort -T $TMPDIR -gr | # > $BLANT_FILES/clus$k.sorted  # sorted [weighted] cluster-counts of all the nodes, largest-to-smallest
 	hawk ' # build the actual communities; may require huge amounts of RAM and CPU, eg 10GB and 12-24h for 9wiki-topcats
 	    BEGIN{if("'$RANDOM_SEED'") srand('$RANDOM_SEED');else Srand();OFS="\t"; ID=0; edgePredict='"$EDGE_PREDICT"';
+	ED='$edgeDensity'; maxClus='$maxClus'; coreIters='$CORE_ITERS'; coreStall='$CORE_STALL';
 		M=1*'$minClusArg'; if(M>=1) minClus=M;
 		else {
 		    m='$numEdges'; n='$numNodes'; eps=m/choose(n,2);
@@ -285,6 +286,77 @@ for edgeDensity in "${EDs[@]}"; do
 		edgeCount -= edgesIntoS[v]+0;
 		wgtEdgeCount -= wgtIntoS[v]+0;
 		IntoS(v,-1);
+	    }
+	    # ---- CORE refinement (-X), after https://github.com/pieterhv/CORE. Runs once per community, after the BFS and
+	    # its trimming, on a valid community S (density >= ED). All state below is global and rebuilt by CoreInit().
+	    # Outside nodes and members sit on per-degree stacks (degree = edgesIntoS) with lazy deletion: an entry is
+	    # stale if the node has since changed degree or side. This finds the best outside node and the worst member
+	    # without scanning the boundary or S. (Never pick from a bucket with for-in: gawk lists every key first.)
+	    function CorePushOut(w,d) { outStk[d][++outTop[d]]=w; if(d>maxOut) maxOut=d; }
+	    function CorePushIn(v,d)  { inStk[d][++inTop[d]]=v; if(d<minIn) minIn=d; }
+	    function CoreInit(    v,w) {
+		PROCINFO["sorted_in"]="";
+		delete mem; delete memPos; delete outStk; delete outTop; delete inStk; delete inTop;
+		cN=0; maxOut=0; minIn=2147483647; nLog=0; logging=0;
+		for(v in S) { mem[++cN]=v; memPos[v]=cN; CorePushIn(v, edgesIntoS[v]+0); }
+		for(w in edgesIntoS) if(!(w in S) && edgesIntoS[w]>0) CorePushOut(w, edgesIntoS[w]);
+	    }
+	    # like IntoS, but also files each neighbor under its new degree
+	    function CoreInto(u,d,    w,x) {
+		if(!(u in edge)) return;
+		for(w in edge[u]) {
+		    x=(edgesIntoS[w]+=d); wgtIntoS[w]+=d*edge[u][w];
+		    if(w in S) CorePushIn(w,x); else if(x>0) CorePushOut(w,x);
+		}
+	    }
+	    function CoreAdd(u) {
+		edgeCount += edgesIntoS[u]+0; wgtEdgeCount += wgtIntoS[u]+0;
+		S[u]=1; mem[++cN]=u; memPos[u]=cN;
+		CoreInto(u,1); CorePushIn(u, edgesIntoS[u]+0);
+		if(logging) { logN[++nLog]=u; logT[nLog]=1; }
+	    }
+	    function CoreDrop(v,    p,last) {
+		delete S[v];
+		edgeCount -= edgesIntoS[v]+0; wgtEdgeCount -= wgtIntoS[v]+0;
+		p=memPos[v]; last=mem[cN]; mem[p]=last; memPos[last]=p; delete mem[cN]; delete memPos[v]; --cN;
+		CoreInto(v,-1); if(edgesIntoS[v]>0) CorePushOut(v, edgesIntoS[v]);
+		if(logging) { logN[++nLog]=v; logT[nLog]=-1; }
+	    }
+	    function CoreBestOut(    t,w) { # outside node with the most edges into S, or "" if S has no outside neighbors
+		for(; maxOut>0; --maxOut) {
+		    for(t=outTop[maxOut]+0; t>0; --t) {
+			w=outStk[maxOut][t];
+			if(!(w in S) && edgesIntoS[w]==maxOut) { outTop[maxOut]=t; return w; }
+			delete outStk[maxOut][t];
+		    }
+		    outTop[maxOut]=0;
+		}
+		return "";
+	    }
+	    function CoreWorstIn(    t,v) { # member with the fewest edges into S
+		for(; minIn<cN; ++minIn) {
+		    for(t=inTop[minIn]+0; t>0; --t) {
+			v=inStk[minIn][t];
+			if((v in S) && edgesIntoS[v]+0==minIn) { inTop[minIn]=t; return v; }
+			delete inStk[minIn][t];
+		    }
+		    inTop[minIn]=0;
+		}
+		ASSERT(0, "CoreWorstIn: no member found among "cN);
+	    }
+	    function CoreValid() { return cN<2 || edgeCount/(cN*(cN-1)/2) >= ED; }
+	    # CORE "valid quasi-clique, so add a node": add the best outside node for as long as density stays >= ED
+	    function CoreFill(    b) {
+		while(cN<maxClus) {
+		    b=CoreBestOut();
+		    if(b=="" || (edgeCount+edgesIntoS[b])/((cN+1)*cN/2) < ED) break;
+		    CoreAdd(b);
+		}
+	    }
+	    function CoreRefine(    oldOrder) {
+		oldOrder=PROCINFO["sorted_in"];
+		CoreInit(); CoreFill();
+		PROCINFO["sorted_in"]=oldOrder;
 	    }
 	    function highRelClusCount(u, v) { # Heuristic
 		if(!(u in count) || count[u]==0) return 1;
@@ -367,6 +439,7 @@ for edgeDensity in "${EDs[@]}"; do
 			    }
 			}
 		    }
+		    sorderN=length(S); # Sorder[1..sorderN] is filled; CORE refinement appends the nodes it adds
 		    if(QueueLength("Q")==0 && length(S) > 1) {
 			# post-process to remove nodes with too low in-cluster degree---quite relevant for lower density
 			# communities where a node may be added because it does not
@@ -402,6 +475,11 @@ for edgeDensity in "${EDs[@]}"; do
 		    if(length(S)>1) {
 			ed = edgeCount / choose(length(S),2);
 			WARN(ed >= '$edgeDensity',"hmmm, ed is "ed);
+		    }
+		    if(coreIters>0 && length(S)>=2 && length(S)<maxClus && edgeCount/choose(length(S),2)>=ED) {
+			delete corePre; for(v in S) corePre[v]=1;
+			CoreRefine();
+			for(v in S) if(!(v in corePre)) Sorder[++sorderN]=v;
 		    }
 		    Slen=length(S);
 		    if(Slen>=minClus && wgtEdgeCount/edgeCount>='$minEdgeMean') {
