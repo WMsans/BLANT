@@ -159,3 +159,32 @@ exploration on, to show whether approach 3's speedup is available.
 
 FlyWire node IDs are 18-digit integers; the script's numeric node comparisons and numeric member sort already
 lose precision on them. Existing behavior, out of scope here.
+
+## Results (2026-11-11)
+
+Full tables: `/home/jeremyz4/Development/blant-bench/REPORT.md` (outside the repo).
+
+Over 40 cells (AThaliana, CElegans, DMelanogaster, HI-union, HSapiens; k=4 and 6; ED 0.5 to 0.0625), `-X 20`
+against the unchanged script on the same samples:
+
+- Biggest cluster larger in 36 cells, equal in 2, smaller in 2. Median of the ten biggest at least baseline in 33.
+- No cluster below ED. `-X 0` output byte-identical to the baseline.
+- Cluster count at least baseline in only 11 cells: it rises at ED 0.5 and falls at lower ED, because larger
+  clusters overlap more and the overlap filter keeps fewer.
+- Builder time x1.61 in total, worst x4.6. End to end, 16 of 32 cells are within +2%; worst is +10.5%. The speed
+  goal is not met on the larger networks.
+- FlyWire was not run (sampling had not finished).
+
+What differs from the design above, each decided from measurements during implementation:
+
+- Refinement never removes nodes the BFS found, only nodes it added itself. Without this every seed converged on
+  the same community and the overlap filter left 1 to 3 clusters in low-ED cells.
+- A community may at most double, and one that grows into an earlier refined community is put back as the BFS
+  found it. Communities that grew 4x or more were almost always (478 of 480 in one cell) such duplicates.
+- The identical-cluster cache became "skip a community already more than OVERLAP inside an earlier refined one".
+- Region start is a random boundary node that has a neighbor outside S; region size is |S|/8 to |S|/2
+  (at least 3, at most 200); the next region node is the best outside neighbor of the node just added.
+- A region is scored before S is modified, and S is only touched when the score says the round can succeed.
+
+Reduced sampling (approach 3), reported only: `-n 1000000` cuts k=4 sampling 3x to 24x, and with `-X` the biggest
+cluster stayed at least the default-sampling baseline's in all 12 cells tried, with fewer clusters at ED <= 0.25.
