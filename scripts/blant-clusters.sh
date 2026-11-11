@@ -313,9 +313,13 @@ for edgeDensity in "${EDs[@]}"; do
 	    # like IntoS, but also files each neighbor under its new degree
 	    function CoreInto(u,d,    w,x) {
 		if(!(u in edge)) return;
-		for(w in edge[u]) {
+		for(w in edge[u]) { # the hottest loop of refinement: CorePushIn/CorePushOut are written out here, not called
 		    x=(edgesIntoS[w]+=d); wgtIntoS[w]+=d*edge[u][w];
-		    if(w in S) CorePushIn(w,x); else if(x>0) CorePushOut(w,x);
+		    if(w in S) { if(!(w in corePre)) { inStk[x][++inTop[x]]=w; if(x<minIn) minIn=x; } }
+		    else if(x>0) {
+			outStk[x][++outTop[x]]=w; if(x>maxOut) maxOut=x;
+			if(!(w in inBnd)) { inBnd[w]=1; bnd[++nBnd]=w; }
+		    }
 		}
 	    }
 	    function CoreAdd(u) {
@@ -371,38 +375,70 @@ for edgeDensity in "${EDs[@]}"; do
 	    # sparse network almost never lands near S; choosing a random member and stepping out almost never finds the
 	    # few members that bridge to another dense group.)
 	    function CoreStart(    i,w) {
-		for(i=1; i<=10 && nBnd>0; i++) {
+		for(i=1; i<=30 && nBnd>0; i++) { # bnd also holds nodes that have since joined S or lost their edges into it
 		    w=bnd[1+int(rand()*nBnd)];
 		    # it must have a neighbor outside S, or it has no region to bring and fill has already rejected it alone
 		    if(!(w in S) && edgesIntoS[w]>0 && length(edge[w])>edgesIntoS[w]) return w;
 		}
 		return "";
 	    }
-	    # next region node (CORE select_to_add_neighborhood): look at up to 3 random region nodes and take their
-	    # outside neighbor with the most edges into S (which already includes the region); ties at random
-	    function CoreNext(    i,r,w,d,bd,b,ties) {
+	    # Scan the neighbors of region node r. With inc set, r has just joined the region, so count its edges in
+	    # regDeg. Returns the best neighbor of r outside S and the region: the one with the most edges into S plus the
+	    # region (CORE select_to_add_neighborhood, looking around one region node instead of three). Ties go to the
+	    # node of higher degree, which can still connect to nodes the region has yet to reach, then at random.
+	    function CoreScan(r,inc,    w,d,g,bd,bg,b,ties) {
 		bd=-1; b="";
-		for(i=MIN(3,nReg); i>0; i--) {
-		    r=reg[1+int(rand()*nReg)];
-		    if(r in edge) for(w in edge[r]) if(!(w in S)) {
-			d=edgesIntoS[w];
-			if(d>bd) { bd=d; b=w; ties=1; }
-			else if(d==bd && rand()*(++ties)<1) b=w;
+		if(r in edge) for(w in edge[r]) {
+		    if(inc) ++regDeg[w];
+		    if(!(w in S) && !(w in inReg)) {
+			d=edgesIntoS[w]+regDeg[w]; g=length(edge[w]);
+			if(d>bd || (d==bd && g>bg)) { bd=d; bg=g; b=w; ties=1; }
+			else if(d==bd && g==bg && rand()*(++ties)<1) b=w;
 		    }
 		}
 		return b;
 	    }
-	    # CORE region_exploration: add a connected region of outside nodes, remove the worst removable members until
-	    # S is a valid community again, fill; keep the result only if S grew (or kept its size and gained edges).
+	    # CORE region_exploration. Build a connected region of outside nodes, then try to take it into S:
+	    #   (a) if S plus some prefix of the region is already a valid community, add the longest such prefix;
+	    #   (b) otherwise add the whole region and remove the worst removable members until S is valid again.
+	    # Then fill. The round succeeds if S grew (or kept its size and gained edges); if not, S is put back.
+	    # Most rounds fail, so the region is first built and judged on paper (regDeg, regG), without touching S:
+	    # (a) is decided exactly, and (b) is attempted only if an estimate says it can leave S larger.
 	    # Region size is random between an eighth and a half of S (at least 3, at most 200): measured on the PPI
 	    # networks, regions of 2 almost never succeed (fill has already tried every single node) while larger
 	    # ones succeed 10-35% of the time.
-	    function CoreRound(    before,eBefore,x,R,lo,hi,ok) {
-		before=cN; eBefore=edgeCount; nLog=0; logging=1;
-		x=CoreStart(); if(x=="") { logging=0; return 0; }
-		lo=MAX(3,int(cN/8)); hi=MIN(200,MAX(lo,int(cN/2))); R=lo+int(rand()*(hi-lo+1));
-		nReg=0; delete reg;
-		while(x!="" && nReg<R && cN<maxClus) { CoreAdd(x); reg[++nReg]=x; x=CoreNext(); }
+	    function CoreRound(    before,eBefore,x,R,lo,hi,ok,G,i,j,d,t,v,m,n2,e2,found,done,step,seenV) {
+		before=cN; eBefore=edgeCount;
+		x=CoreStart(); if(x=="") return 0;
+		lo=MAX(3,int(cN/8)); hi=MIN(200,MAX(lo,int(cN/2))); R=MIN(lo+int(rand()*(hi-lo+1)), maxClus-cN);
+		delete reg; delete inReg; delete regDeg; delete regG; nReg=0; G=0;
+		while(x!="" && nReg<R) {
+		    G+=edgesIntoS[x]+regDeg[x]; reg[++nReg]=x; inReg[x]=1; regG[nReg]=G; # regG[j]: edges gained by adding reg[1..j]
+		    x=CoreScan(x,1);
+		    for(i=1; x=="" && i<=2 && nReg>1; i++) x=CoreScan(reg[1+int(rand()*nReg)],0); # dead end: look elsewhere
+		}
+		# (a) the longest prefix that keeps S valid as it is
+		for(j=nReg; j>=1; j--) if((eBefore+regG[j])/((before+j)*(before+j-1)/2) >= ED) break;
+		if(j>=1) { for(i=1;i<=j;i++) CoreAdd(reg[i]); CoreFill(); return 1; }
+		# (b) estimate, for the whole region and then for up to 7 shorter prefixes of it: after adding reg[1..j],
+		# does removing at most j of the worst removable members make S valid, and larger or at least richer in
+		# edges than it was? Each removed member is assumed to take all its edges with it, which overstates the
+		# loss when two of them are adjacent, so this errs towards not trying.
+		found=0; step=MAX(1,int(nReg/8));
+		for(j=nReg; j>=2 && !found; j-=step) {
+		    n2=before+j; e2=eBefore+regG[j]; m=0; done=0; delete seenV;
+		    for(d=minIn; d<before && m<j && !done; d++) for(t=inTop[d]+0; t>0 && m<j; t--) {
+			v=inStk[d][t];
+			if((v in S) && !(v in seenV) && edgesIntoS[v]+0==d) {
+			    seenV[v]=1; ++m; --n2; e2-=d+regDeg[v];
+			    if(e2/(n2*(n2-1)/2) >= ED) { found=(n2>before || e2>eBefore); done=1; break; }
+			}
+		    }
+		}
+		if(!found) return 0;
+		nReg=j+step; # the prefix that passed
+		nLog=0; logging=1;
+		for(i=1;i<=nReg;i++) CoreAdd(reg[i]);
 		while(cN>1 && !CoreValid() && (x=CoreWorstIn())!="") CoreDrop(x);
 		CoreFill();
 		ok=(CoreValid() && (cN>before || (cN==before && edgeCount>eBefore)));
