@@ -196,3 +196,10 @@ baseline in 34, equal in 4, smaller in 2; builder x1.28; end to end within +2% i
 Against that, full `-X 20` leaves the biggest cluster identical in 29 cells (larger in 4, smaller in 7), raises the
 median of the ten biggest in 19 cells and lowers it in 17, and costs another 25% of builder time. The fill step
 gives nearly all of the gain; whether region rounds stay on by default is Jeremy's decision.
+
+### Default after the benchmark (decided 2026-11-11)
+
+Jeremy left the default to Claude. Without `-X`, each community is grown (fill) but no region rounds run; `-X N`
+adds up to N region rounds; `-X 0` switches refinement off and reproduces the old output. This supersedes
+"default 20" above. The default sample count is unchanged: the reduced-sampling evidence covers three networks at
+k=4 only, and a change there would alter every user's results, so it is left for a separate change.
