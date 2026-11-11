@@ -236,6 +236,7 @@ for edgeDensity in "${EDs[@]}"; do
 	hawk ' # build the actual communities; may require huge amounts of RAM and CPU, eg 10GB and 12-24h for 9wiki-topcats
 	    BEGIN{if("'$RANDOM_SEED'") srand('$RANDOM_SEED');else Srand();OFS="\t"; ID=0; edgePredict='"$EDGE_PREDICT"';
 	ED='$edgeDensity'; maxClus='$maxClus'; coreIters='$CORE_ITERS'; coreStall='$CORE_STALL';
+	coreCheck=ENVIRON["BLANT_CLUSTERS_CHECK"]; # debugging: if set, verify every refined community (slow)
 		M=1*'$minClusArg'; if(M>=1) minClus=M;
 		else {
 		    m='$numEdges'; n='$numNodes'; eps=m/choose(n,2);
@@ -292,12 +293,19 @@ for edgeDensity in "${EDs[@]}"; do
 	    # Outside nodes and members sit on per-degree stacks (degree = edgesIntoS) with lazy deletion: an entry is
 	    # stale if the node has since changed degree or side. This finds the best outside node and the worst member
 	    # without scanning the boundary or S. (Never pick from a bucket with for-in: gawk lists every key first.)
-	    function CorePushOut(w,d) { outStk[d][++outTop[d]]=w; if(d>maxOut) maxOut=d; }
-	    function CorePushIn(v,d)  { inStk[d][++inTop[d]]=v; if(d<minIn) minIn=d; }
+	    # bnd[1..nBnd] lists every node that has been on the boundary (outside S with an edge into S) for this seed.
+	    function CorePushOut(w,d) {
+		outStk[d][++outTop[d]]=w; if(d>maxOut) maxOut=d;
+		if(!(w in inBnd)) { inBnd[w]=1; bnd[++nBnd]=w; }
+	    }
+	    # Only nodes that refinement itself added can be removed again: the members the BFS found (corePre) are never
+	    # filed here. Without that, every seed in a neighborhood drifts to the same best community and the later
+	    # overlap filter throws nearly all of them away; with it, a community can only gain nodes.
+	    function CorePushIn(v,d)  { if(v in corePre) return; inStk[d][++inTop[d]]=v; if(d<minIn) minIn=d; }
 	    function CoreInit(    v,w) {
 		PROCINFO["sorted_in"]="";
-		delete mem; delete memPos; delete outStk; delete outTop; delete inStk; delete inTop;
-		cN=0; maxOut=0; minIn=2147483647; nLog=0; logging=0;
+		delete mem; delete memPos; delete outStk; delete outTop; delete inStk; delete inTop; delete bnd; delete inBnd;
+		nBnd=0; cN=0; maxOut=0; minIn=2147483647; nLog=0; logging=0;
 		for(v in S) { mem[++cN]=v; memPos[v]=cN; CorePushIn(v, edgesIntoS[v]+0); }
 		for(w in edgesIntoS) if(!(w in S) && edgesIntoS[w]>0) CorePushOut(w, edgesIntoS[w]);
 	    }
@@ -333,7 +341,7 @@ for edgeDensity in "${EDs[@]}"; do
 		}
 		return "";
 	    }
-	    function CoreWorstIn(    t,v) { # member with the fewest edges into S
+	    function CoreWorstIn(    t,v) { # removable member with the fewest edges into S, or "" if there is none
 		for(; minIn<cN; ++minIn) {
 		    for(t=inTop[minIn]+0; t>0; --t) {
 			v=inStk[minIn][t];
@@ -342,7 +350,7 @@ for edgeDensity in "${EDs[@]}"; do
 		    }
 		    inTop[minIn]=0;
 		}
-		ASSERT(0, "CoreWorstIn: no member found among "cN);
+		return "";
 	    }
 	    function CoreValid() { return cN<2 || edgeCount/(cN*(cN-1)/2) >= ED; }
 	    # CORE "valid quasi-clique, so add a node": add the best outside node for as long as density stays >= ED
@@ -353,10 +361,72 @@ for edgeDensity in "${EDs[@]}"; do
 		    CoreAdd(b);
 		}
 	    }
-	    function CoreRefine(    oldOrder) {
+	    function CoreUndo(    i) { # put S back exactly as it was when logging was switched on
+		logging=0;
+		for(i=nLog;i>=1;i--) if(logT[i]>0) CoreDrop(logN[i]); else CoreAdd(logN[i]);
+		nLog=0;
+	    }
+	    # region start: a random boundary node. (CORE takes a random node from the whole graph, which on a large
+	    # sparse network almost never lands near S; choosing a random member and stepping out almost never finds the
+	    # few members that bridge to another dense group.)
+	    function CoreStart(    i,w) {
+		for(i=1; i<=10 && nBnd>0; i++) {
+		    w=bnd[1+int(rand()*nBnd)];
+		    if(!(w in S) && edgesIntoS[w]>0) return w;
+		}
+		return "";
+	    }
+	    # next region node (CORE select_to_add_neighborhood): look at up to 3 random region nodes and take their
+	    # outside neighbor with the most edges into S (which already includes the region); ties at random
+	    function CoreNext(    i,r,w,d,bd,b,ties) {
+		bd=-1; b="";
+		for(i=MIN(3,nReg); i>0; i--) {
+		    r=reg[1+int(rand()*nReg)];
+		    if(r in edge) for(w in edge[r]) if(!(w in S)) {
+			d=edgesIntoS[w];
+			if(d>bd) { bd=d; b=w; ties=1; }
+			else if(d==bd && rand()*(++ties)<1) b=w;
+		    }
+		}
+		return b;
+	    }
+	    # CORE region_exploration: add a connected region of outside nodes, remove the worst removable members until
+	    # S is a valid community again, fill; keep the result only if S grew (or kept its size and gained edges).
+	    # Region size is random between an eighth and a half of S (at least 3, at most 200): measured on the PPI
+	    # networks, regions of 2 almost never succeed (fill has already tried every single node) while larger
+	    # ones succeed 10-35% of the time.
+	    function CoreRound(    before,eBefore,x,R,lo,hi,ok) {
+		before=cN; eBefore=edgeCount; nLog=0; logging=1;
+		x=CoreStart(); if(x=="") { logging=0; return 0; }
+		lo=MAX(3,int(cN/8)); hi=MIN(200,MAX(lo,int(cN/2))); R=lo+int(rand()*(hi-lo+1));
+		nReg=0; delete reg;
+		while(x!="" && nReg<R && cN<maxClus) { CoreAdd(x); reg[++nReg]=x; x=CoreNext(); }
+		while(cN>1 && !CoreValid() && (x=CoreWorstIn())!="") CoreDrop(x);
+		CoreFill();
+		ok=(CoreValid() && (cN>before || (cN==before && edgeCount>eBefore)));
+		if(!ok) CoreUndo();
+		logging=0;
+		return ok;
+	    }
+	    function CoreRefine(    oldOrder,it,no) {
 		oldOrder=PROCINFO["sorted_in"];
 		CoreInit(); CoreFill();
+		# region rounds are the expensive part; a community still too small to be reported after filling is not worth them
+		no=0; if(cN>=minClus) for(it=1; it<=coreIters && no<coreStall; it++) if(CoreRound()) no=0; else ++no;
 		PROCINFO["sorted_in"]=oldOrder;
+	    }
+	    function CoreCheck(preN,preE,    u,v,w,e,n) { # debugging (BLANT_CLUSTERS_CHECK): the bookkeeping must match S
+		PROCINFO["sorted_in"]="";
+		n=length(S); e=InducedEdges(edge,S); w=0;
+		for(u in S) if(u in edge) for(v in S) if(v in edge[u]) w+=edge[u][v];
+		ASSERT(cN==n, "CoreCheck: member count "cN" but S has "n);
+		ASSERT(edgeCount==e, "CoreCheck: edgeCount "edgeCount" but S induces "e);
+		ASSERT(ABS(wgtEdgeCount-w/2) <= 1e-9*(1+w), "CoreCheck: wgtEdgeCount "wgtEdgeCount" but S induces "w/2);
+		ASSERT(n<2 || e/choose(n,2) >= ED, "CoreCheck: density "e"/"choose(n,2)" is below "ED);
+		ASSERT(n<=maxClus, "CoreCheck: size "n" exceeds maximum "maxClus);
+		ASSERT(n>preN || (n==preN && e>=preE), "CoreCheck: went from "preN" nodes, "preE" edges to "n", "e);
+		for(u in corePre) ASSERT(u in S, "CoreCheck: refinement removed "u", which the BFS had found");
+		ASSERT(coreCheck!="selftest", "CoreCheck: selftest (this failure is deliberate)");
 	    }
 	    function highRelClusCount(u, v) { # Heuristic
 		if(!(u in count) || count[u]==0) return 1;
@@ -478,7 +548,9 @@ for edgeDensity in "${EDs[@]}"; do
 		    }
 		    if(coreIters>0 && length(S)>=2 && length(S)<maxClus && edgeCount/choose(length(S),2)>=ED) {
 			delete corePre; for(v in S) corePre[v]=1;
+			corePreN=length(S); corePreE=edgeCount;
 			CoreRefine();
+			if(coreCheck) { oldOrder=PROCINFO["sorted_in"]; CoreCheck(corePreN, corePreE); PROCINFO["sorted_in"]=oldOrder; }
 			for(v in S) if(!(v in corePre)) Sorder[++sorderN]=v;
 		    }
 		    Slen=length(S);
