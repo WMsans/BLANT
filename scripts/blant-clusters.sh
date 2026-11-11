@@ -360,7 +360,7 @@ for edgeDensity in "${EDs[@]}"; do
 	    function CoreValid() { return cN<2 || edgeCount/(cN*(cN-1)/2) >= ED; }
 	    # CORE "valid quasi-clique, so add a node": add the best outside node for as long as density stays >= ED
 	    function CoreFill(    b) {
-		while(cN<maxClus) {
+		while(cN<coreCap) {
 		    b=CoreBestOut();
 		    if(b=="" || (edgeCount+edgesIntoS[b])/((cN+1)*cN/2) < ED) break;
 		    CoreAdd(b);
@@ -411,6 +411,7 @@ for edgeDensity in "${EDs[@]}"; do
 		before=cN; eBefore=edgeCount;
 		x=CoreStart(); if(x=="") return 0;
 		lo=MAX(3,int(cN/8)); hi=MIN(200,MAX(lo,int(cN/2))); R=MIN(lo+int(rand()*(hi-lo+1)), maxClus-cN);
+		if(R<1) return 0; # (the region may take S past coreCap for a moment; what is kept may not be)
 		delete reg; delete inReg; delete regDeg; delete regG; nReg=0; G=0;
 		while(x!="" && nReg<R) {
 		    G+=edgesIntoS[x]+regDeg[x]; reg[++nReg]=x; inReg[x]=1; regG[nReg]=G; # regG[j]: edges gained by adding reg[1..j]
@@ -418,7 +419,7 @@ for edgeDensity in "${EDs[@]}"; do
 		    for(i=1; x=="" && i<=2 && nReg>1; i++) x=CoreScan(reg[1+int(rand()*nReg)],0); # dead end: look elsewhere
 		}
 		# (a) the longest prefix that keeps S valid as it is
-		for(j=nReg; j>=1; j--) if((eBefore+regG[j])/((before+j)*(before+j-1)/2) >= ED) break;
+		for(j=MIN(nReg,coreCap-before); j>=1; j--) if((eBefore+regG[j])/((before+j)*(before+j-1)/2) >= ED) break;
 		if(j>=1) { for(i=1;i<=j;i++) CoreAdd(reg[i]); CoreFill(); return 1; }
 		# (b) estimate, for the whole region and then for up to 7 shorter prefixes of it: after adding reg[1..j],
 		# does removing at most j of the worst removable members make S valid, and larger or at least richer in
@@ -443,23 +444,28 @@ for edgeDensity in "${EDs[@]}"; do
 		    n2=before+j; e2=eBefore+regG[j];
 		    for(m=1; m<=nRem && m<=j; m++) {
 			--n2; e2-=remD[m]+regDeg[remV[m]];
-			if(e2/(n2*(n2-1)/2) >= ED) { found=(n2>before || e2>eBefore); break; }
+			if(n2<=coreCap && e2/(n2*(n2-1)/2) >= ED) { found=(n2>before || e2>eBefore); break; }
 		    }
 		}
 		if(!found) return 0;
 		nReg=j+step; # the prefix that passed
 		nLog=0; logging=1;
 		for(i=1;i<=nReg;i++) CoreAdd(reg[i]);
-		while(cN>1 && !CoreValid() && (x=CoreWorstIn())!="") CoreDrop(x);
+		while(cN>1 && (cN>coreCap || !CoreValid()) && (x=CoreWorstIn())!="") CoreDrop(x);
 		CoreFill();
-		ok=(CoreValid() && (cN>before || (cN==before && edgeCount>eBefore)));
+		ok=(CoreValid() && cN<=coreCap && (cN>before || (cN==before && edgeCount>eBefore)));
 		if(!ok) CoreUndo();
 		logging=0;
 		return ok;
 	    }
 	    function CoreRefine(    oldOrder,it,no) {
 		oldOrder=PROCINFO["sorted_in"];
-		CoreInit(); CoreFill();
+		CoreInit();
+		# A community may at most double. Measured on HI-union and DMelanogaster: communities that more than
+		# doubled had almost always (478 of 480 at ED 0.25 on HI-union) just grown into one refined earlier, which
+		# costs most of the refinement time and then loses the community to the overlap filter.
+		coreCap=MIN(maxClus, 2*cN);
+		CoreFill();
 		# region rounds are the expensive part; a community still too small to be reported after filling is not worth them
 		no=0; if(cN>=minClus) for(it=1; it<=coreIters && no<coreStall; it++) if(CoreRound()) no=0; else ++no;
 		PROCINFO["sorted_in"]=oldOrder;
@@ -481,6 +487,7 @@ for edgeDensity in "${EDs[@]}"; do
 		ASSERT(ABS(wgtEdgeCount-w/2) <= 1e-9*(1+w), "CoreCheck: wgtEdgeCount "wgtEdgeCount" but S induces "w/2);
 		ASSERT(n<2 || e/choose(n,2) >= ED, "CoreCheck: density "e"/"choose(n,2)" is below "ED);
 		ASSERT(n<=maxClus, "CoreCheck: size "n" exceeds maximum "maxClus);
+		ASSERT(n<=2*preN, "CoreCheck: grew from "preN" to "n", more than double");
 		ASSERT(n>preN || (n==preN && e>=preE), "CoreCheck: went from "preN" nodes, "preE" edges to "n", "e);
 		for(u in corePre) ASSERT(u in S, "CoreCheck: refinement removed "u", which the BFS had found");
 		ASSERT(coreCheck!="selftest", "CoreCheck: selftest (this failure is deliberate)");
@@ -610,6 +617,10 @@ for edgeDensity in "${EDs[@]}"; do
 			    delete corePre; for(v in S) corePre[v]=1;
 			    corePreN=length(S); corePreE=edgeCount;
 			    CoreRefine(); ++coreRefined;
+			    if(cN>corePreN && CoreCovered()) { # it grew into an earlier community: put it back as the BFS found it
+				++coreReverted; delete coreGone; for(v in S) if(!(v in corePre)) coreGone[v]=1;
+				for(v in coreGone) CoreDrop(v);
+			    }
 			    if(coreCheck) CoreCheck(corePreN, corePreE);
 			    for(v in S) if(!(v in corePre)) Sorder[++sorderN]=v;
 			    if(length(S)>=minClus) for(v in S) coreNodeClus[v][coreRefined]=1;
@@ -637,7 +648,8 @@ for edgeDensity in "${EDs[@]}"; do
 		    }
 		}
 		if('$VERBOSE' && coreIters>0)
-		    printf "CORE refinement: %d refined, %d skipped (already covered)\n", coreRefined, coreSkipped >"/dev/stderr"
+		    printf "CORE refinement: %d refined, %d skipped (already covered), %d reverted (grew into an earlier one)\n",
+			coreRefined, coreSkipped, coreReverted >"/dev/stderr"
 	    }' "$TMPDIR/net4awk.el$W" - | # dash is the output of the above pipe (sorted cluster counts)
 	sort -T $TMPDIR -nr |
 	hawk ' # remove duplicate clusters
