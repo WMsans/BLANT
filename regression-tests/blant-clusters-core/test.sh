@@ -109,5 +109,14 @@ BLANT_CLUSTERS_CHECK=1 run_on longid "-m 5" 0.5 > $TMP/longid.out || fail "long 
 distinct_members $TMP/longid.out || fail "long ids: a cluster lists a node twice or miscounts its members"
 [ "`biggest $TMP/longid.out`" -ge 20 ] || fail "long ids: biggest cluster `biggest $TMP/longid.out`, expected at least 20"
 
+# test_skip_covered: a community that already lies mostly (more than the -o fraction) inside one refined earlier is
+# not refined again (the overlap filter would discard it anyway); -v reports how often that happened
+line=`run_clusters_stderr "-v" 0.125 | grep "CORE refinement: [0-9]* refined, [0-9]* skipped"`
+[ -n "$line" ] || fail "no refinement counters with -v"
+skipped=`echo "$line" | sed 's/.*refined, \([0-9]*\) skipped.*/\1/'`
+[ "${skipped:-0}" -gt 0 ] || fail "no covered community was skipped at ED 0.125: $line"
+# with -o 1 nothing can be more than 100% covered, so nothing is skipped
+run_clusters_stderr "-v -o 1" 0.125 | grep -q "CORE refinement: [0-9]* refined, 0 skipped" || fail "-o 1 still skipped communities"
+
 echo 'Done testing blant-clusters -X'
 exit $exitCode
