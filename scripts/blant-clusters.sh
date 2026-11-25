@@ -31,6 +31,14 @@ OPTIONS (added BEFORE the blant.exe name)
     -X N: CORE refinement: grow each community while its density stays above the threshold, then try up to N
 	region-exploration rounds on it. Default (no -X): grow only, no region rounds. 0 = off (no refinement at all).
 	Region rounds (eg -X 20) take roughly 25% more time and, on the networks tested, rarely enlarge the biggest community.
+    -B: after all communities are built, search for the biggest one. The search starts from the whole graph peeled
+	down to the threshold and from the 8 largest communities found, and swaps members for outside nodes until one
+	more node fits. The largest valid, connected community it sees is reported as one more community (communities
+	it mostly covers are then dropped by -o), and communities of equal size are ranked by edge count. It cannot come
+	out smaller than the biggest community found, which is one of its starts. Measured on 48 PPI cells and FlyWire:
+	the biggest community grew in 43 (up to 18%), for up to ~4x the builder time. Works with any -X, including -X 0.
+	Environment: BLANT_CLUSTERS_CHAMP_STARTS sets the number of starts besides the peel (default 8);
+	BLANT_CLUSTERS_CHAMP_ITERS (default 1000) sets how many swaps without improvement end each start.
     -sSAMPLE_METHOD: BLANT's sampling method (reasonable choices are MCMC, NBE, EBE, or RES)
     -o OVERLAP: (default 0.5); the maximum allowed fractional overlap between a new cluster and any one previously discovered
 	cluster (though it can overlap by more than this with MULTIPLE previous clusters). If it overlaps more than this with
@@ -92,6 +100,11 @@ CORE_REFINE=1 # grow each community after the BFS; -X 0 switches this (and so al
 CORE_ITERS=0  # maximum region-exploration rounds per community, on top of growing it; set by -X N
 CORE_X_GIVEN=false
 CORE_STALL=5  # stop refining a community after this many consecutive rounds that fail to improve it
+# champion search (-B): how many of the largest communities to restart from besides the peel (-1 switches the
+# search off), and how many tabu steps without improvement end a start
+CHAMP=0
+CHAMP_STARTS=${BLANT_CLUSTERS_CHAMP_STARTS:-8}
+CHAMP_ITERS=${BLANT_CLUSTERS_CHAMP_ITERS:-1000}
 
 while echo "X$1" | grep '^X-' >/dev/null; do # first argument is an option
     case "$1" in
@@ -120,6 +133,7 @@ while echo "X$1" | grep '^X-' >/dev/null; do # first argument is an option
     -o) OVERLAP="$2"; shift 2;;
     -o[0-9]*) OVERLAP="`echo $1|sed 's/^-o//'`"; shift 1;;
     -P[0-9]*) EDGE_PREDICT="`echo $1|sed 's/^-P//'`"; shift 1;;
+    -B) CHAMP=1; shift;;
     -X) CORE_ITERS="$2"; CORE_X_GIVEN=true; shift 2;;
     -X[0-9]*) CORE_ITERS="`echo $1|sed 's/^-X//'`"; CORE_X_GIVEN=true; shift 1;;
     -*) die "unknown option '$1'";;
@@ -128,6 +142,12 @@ done
 
 echo "X$CORE_ITERS" | grep '^X[0-9][0-9]*$' >/dev/null || die "-X needs a non-negative integer, not '$CORE_ITERS'"
 $CORE_X_GIVEN && [ "$CORE_ITERS" -eq 0 ] && CORE_REFINE=0
+echo "X$CHAMP_STARTS" | grep '^X-*[0-9][0-9]*$' >/dev/null || die "BLANT_CLUSTERS_CHAMP_STARTS must be an integer, not '$CHAMP_STARTS'"
+echo "X$CHAMP_ITERS" | grep '^X[0-9][0-9]*$' >/dev/null || die "BLANT_CLUSTERS_CHAMP_ITERS must be a non-negative integer, not '$CHAMP_ITERS'"
+[ $CHAMP = 1 ] || CHAMP_STARTS=-1
+# with -B, of two communities of the same size the one with more edges comes first, so that it is the one the overlap
+# filter keeps (with -M every large community has the same size, and the champion is usually the densest)
+[ $CHAMP = 1 ] && SUBFINAL_SORT="-k 2nr -k 3nr -k 5n"
 [ $# -ne 4 ] && die "expecting exactly 4 mandatory arguments, but you supplied $#"
 
 # Temporary Filename + Directory (both, you can use either, note they'll have different random stuff in the XXXXXX part)
@@ -245,6 +265,7 @@ for edgeDensity in "${EDs[@]}"; do
 	coreNoEstimate=ENVIRON["BLANT_CLUSTERS_NOESTIMATE"]; # debugging: if set, really add every region (exercises undo)
 	coreNoRounds=ENVIRON["BLANT_CLUSTERS_NOROUNDS"]; # debugging/benchmarking: if set, fill only, no region rounds
 	coreCheck=ENVIRON["BLANT_CLUSTERS_CHECK"]; # debugging: if set, verify every refined community (slow)
+	champStarts='$CHAMP_STARTS'; champIters='$CHAMP_ITERS'; # champion search (-B): starts besides the peel (-1 = off), tabu steps
 		M=1*'$minClusArg'; if(M>=1) minClus=M;
 		else {
 		    m='$numEdges'; n='$numNodes'; eps=m/choose(n,2);
@@ -504,6 +525,132 @@ for edgeDensity in "${EDs[@]}"; do
 		    "CoreCheck: edge mean fell from "(preE?preW/preE:0)" to "(e?w/2/e:0)", below the threshold "minEdgeMean);
 		ASSERT(coreCheck!="selftest", "CoreCheck: selftest (this failure is deliberate)");
 	    }
+	    # ---- Champion phase: after every community has been built and refined, spend the effort on the single largest
+	    # one. The threshold is on the average density of a community, so the largest valid community is a global object:
+	    # the BFS grows from one seed, and the refinement above never drops a node the BFS found and may at most double
+	    # a community, so neither can trade weak members for better ones. Here the starts are the whole graph peeled
+	    # down to the threshold (repeatedly drop the node of least degree) and the largest communities found above.
+	    # Each start is filled, then a tabu search keeps one node more than the best valid size so far and swaps the
+	    # worst member for the best outside node until the density threshold is met again, then fills and repeats.
+	    # The largest valid community seen is reported as one more community (the overlap filter then drops the
+	    # smaller ones it covers).
+	    function ChampLoad(set,    v) { # make S exactly set, with all bookkeeping rebuilt
+		delete S; delete edgesIntoS; delete wgtIntoS; edgeCount=wgtEdgeCount=0;
+		for(v in set) { edgeCount+=edgesIntoS[v]+0; wgtEdgeCount+=wgtIntoS[v]+0; S[v]=1; IntoS(v,1); }
+	    }
+	    function ChampPeel(out,    v,w,d,x,n,e,pd,stk,top) { # degeneracy peel of the whole graph down to ED and maxClus
+		delete out; n=0; e=0;
+		for(v in edge) { d=length(edge[v]); pd[v]=d; out[v]=1; ++n; e+=d; stk[d][++top[d]]=v; }
+		e/=2; d=0;
+		while(n>1 && (n>maxClus || e/(n*(n-1)/2) < ED)) {
+		    while(!(top[d]+0)) ++d;
+		    v=stk[d][top[d]]; delete stk[d][top[d]--];
+		    if(!(v in out) || pd[v]!=d) continue; # stale entry
+		    delete out[v]; --n; e-=d;
+		    for(w in edge[v]) if(w in out) { x=--pd[w]; stk[x][++top[x]]=w; if(x<d) d=x; }
+		}
+	    }
+	    # best outside node that is not tabu: a random one of the first 4 valid entries in the highest bucket
+	    function ChampBestOut(    d,t,w,m,c) {
+		for(d=maxOut; d>0; d--) {
+		    m=0;
+		    for(t=outTop[d]+0; t>0; t--) {
+			w=outStk[d][t];
+			if((w in S) || edgesIntoS[w]!=d) { if(t==outTop[d]) { delete outStk[d][t]; --outTop[d]; } continue; }
+			if((w in champTabuAdd) && champTabuAdd[w]>=champIt) continue;
+			c[++m]=w; if(m>=4) break;
+		    }
+		    if(d==maxOut && !(outTop[d]+0)) maxOut=d-1;
+		    if(m) return c[1+int(rand()*m)];
+		}
+		return "";
+	    }
+	    # worst member that is not tabu: a random one of up to 8 in the lowest bucket that has one. Each bucket read is
+	    # rewritten without its stale and repeated entries.
+	    function ChampWorstIn(    d,t,v,m,k,c,seen) {
+		for(d=minIn; d<=cN; d++) {
+		    m=0; k=0; delete seen;
+		    for(t=1; t<=inTop[d]+0; t++) {
+			v=inStk[d][t];
+			if((v in S) && !(v in seen) && edgesIntoS[v]+0==d) {
+			    seen[v]=1; inStk[d][++k]=v;
+			    if(m<8 && (!(v in champTabuRem) || champTabuRem[v]<champIt)) c[++m]=v;
+			}
+		    }
+		    for(t=k+1; t<=inTop[d]+0; t++) delete inStk[d][t];
+		    inTop[d]=k; if(k==0 && d==minIn) minIn=d+1;
+		    if(m) return c[1+int(rand()*m)];
+		}
+		return "";
+	    }
+	    # S is valid and reportable: keep it if it beats the best of this start (return 1) and the overall best
+	    function ChampRecord(    v) {
+		if(!CoreValid() || cN>maxClus || (edgeCount>0 && wgtEdgeCount/edgeCount<minEdgeMean)) return 0;
+		if(cN<runN || (cN==runN && edgeCount<=runE)) return 0;
+		runN=cN; runE=edgeCount;
+		if(cN>champN || (cN==champN && edgeCount>champE)) {
+		    delete champBest; for(v in S) champBest[v]=1; champN=cN; champE=edgeCount; champFrom=champStart;
+		}
+		return 1;
+	    }
+	    function ChampSearch(iters,    noimp,u,v) {
+		delete corePre; CoreInit(); coreCap=maxClus; runN=0; runE=-1;
+		delete champTabuAdd; delete champTabuRem; champIt=0;
+		CoreFill(); ChampRecord();
+		noimp=0;
+		while(noimp<iters && cN<coreCap) {
+		    ++champIt; ++noimp; ++champSteps;
+		    if(CoreValid()) { # one more node fits: take it, then aim one node higher again
+			CoreFill(); if(ChampRecord()) noimp=0;
+			if(cN>=coreCap || (u=ChampBestOut())=="") break;
+			CoreAdd(u); continue;
+		    }
+		    if((v=ChampWorstIn())=="") break;
+		    CoreDrop(v); champTabuAdd[v]=champIt+7+int(rand()*4); # do not take it straight back
+		    if((u=ChampBestOut())=="") break;
+		    CoreAdd(u); champTabuRem[u]=champIt+MAX(3,int(cN/10))+int(rand()*4); # nor drop the new one soon
+		}
+	    }
+	    # the largest connected component of set, into out; returns its size
+	    function ChampComponent(set,out,    s,v,w,q,h,t,seen,best,n) {
+		delete out; best=0;
+		for(s in set) if(!(s in seen)) {
+		    delete q; h=1; t=0; q[++t]=s; seen[s]=1;
+		    while(h<=t) { v=q[h++]; for(w in edge[v]) if((w in set) && !(w in seen)) { seen[w]=1; q[++t]=w; } }
+		    if(t>best) { best=t; delete out; for(n=1;n<=t;n++) out[q[n]]=1; }
+		}
+		return best;
+	    }
+	    function ChampPhase(    i,j,b,used,start,comp,oldOrder) {
+		oldOrder=PROCINFO["sorted_in"]; PROCINFO["sorted_in"]="";
+		champN=0; champE=-1; delete champBest; champSteps=0;
+		champStart="peel"; ChampPeel(start); champPeelN=length(start);
+		ChampLoad(start); ChampSearch(champIters);
+		for(j=1; j<=champStarts; j++) { # then the largest communities reported above
+		    b=0; for(i=1;i<=numClus;i++) if(!(i in used) && (b==0 || length(cluster[i])>length(cluster[b]))) b=i;
+		    if(!b) break;
+		    used[b]=1; champStart="community "j; ChampLoad(cluster[b]); ChampSearch(champIters);
+		}
+		if(champN>0 && ChampComponent(champBest,comp)<champN) { # a community must be connected
+		    ChampLoad(comp); cN=length(S);
+		    delete champBest; champN=0;
+		    if(CoreValid() && (edgeCount==0 || wgtEdgeCount/edgeCount>=minEdgeMean)) { for(i in S) champBest[i]=1; champN=cN; }
+		}
+		ChampLoad(champBest);
+		PROCINFO["sorted_in"]=oldOrder;
+	    }
+	    function ChampCheck(    n,e,w,u,v,comp) { # debugging (BLANT_CLUSTERS_CHECK): the champion is a valid community
+		PROCINFO["sorted_in"]="";
+		n=length(S); e=InducedEdges(edge,S); w=0;
+		for(u in S) if(u in edge) for(v in S) if(v in edge[u]) w+=edge[u][v];
+		ASSERT(n==champN, "ChampCheck: size "n" but recorded "champN);
+		ASSERT(edgeCount==e, "ChampCheck: edgeCount "edgeCount" but S induces "e);
+		ASSERT(ABS(wgtEdgeCount-w/2) <= 1e-9*(1+w), "ChampCheck: wgtEdgeCount "wgtEdgeCount" but S induces "w/2);
+		ASSERT(n<2 || e/choose(n,2) >= ED, "ChampCheck: density "e"/"choose(n,2)" is below "ED);
+		ASSERT(n<=maxClus, "ChampCheck: size "n" exceeds maximum "maxClus);
+		ASSERT(e==0 || w/2/e >= minEdgeMean, "ChampCheck: edge mean "(w/2/e)" is below "minEdgeMean);
+		ASSERT(ChampComponent(S,comp)==n, "ChampCheck: not connected");
+	    }
 	    function highRelClusCount(u, v) { # Heuristic
 		if(!(u in count) || count[u]==0) return 1;
 		if(!(v in count) || count[v]==0) return 0;
@@ -661,6 +808,20 @@ for edgeDensity in "${EDs[@]}"; do
 			# we eliminate NOTHING in this loop.
 			for(i=1;i<Slen*(1-'$OVERLAP');i++) started[Sorder[i]]=1;
 		    }
+		}
+		if(champStarts>=0) {
+		    ChampPhase();
+		    if(coreCheck && champN>0) ChampCheck();
+		    if(champN>=minClus && champN>=2) {
+			printf "%d %d %g", champN, edgeCount, wgtEdgeCount;
+			oldOrder=PROCINFO["sorted_in"]; PROCINFO["sorted_in"]="@ind_str_asc";
+			for(u in S) printf " %s", u;
+			PROCINFO["sorted_in"]=oldOrder;
+			print "";
+		    }
+		    if('$VERBOSE')
+			printf "CORE champion: peel start %d nodes; best %d nodes, %d edges, from %s; %d search steps\n",
+			    champPeelN, champN, edgeCount, champFrom, champSteps >"/dev/stderr"
 		}
 		if('$VERBOSE' && coreRefine)
 		    printf "CORE refinement: %d refined, %d skipped (already covered), %d reverted, %d region rounds, %d rounds undone\n",
